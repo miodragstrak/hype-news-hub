@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+frontend/node_modules/
+
+# Environment files
+.env
+*.env.local
+
+# Logs and coverage
+*.log
+coverage/
+htmlcov/
+
+# Build artifacts
+frontend/dist/
+backend/.alembic/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/tailwind.config.js
+frontend/tailwind.config.d.ts
+
+# Python
+backend/.venv
+backend/__pycache__
+*.pyc
+
+# IDE
+.vscode
+
+# OS
+.DS_Store
