@@ -1,11 +1,26 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --hype-yellow: #f5c518;
+  --hype-yellow-hover: #e5b300;
+  --hype-blue: #0b1f4d;
+  --hype-blue-soft: #34518f;
+  --hype-surface: #f5f8fd;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background: linear-gradient(145deg, #f5f7fa 0%, #e6ecf4 100%);
-  color: #1b2430;
+  font-family: "Manrope", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background: #ffffff;
+  color: var(--hype-blue);
+  letter-spacing: -0.01em;
+}
+
+#root {
+  min-height: 100vh;
 }

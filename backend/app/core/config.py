@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     backend_cors_origins: str = "http://localhost:5173"
     discovery_timeout_seconds: float = 8.0
+    story_merge_threshold: int = 72
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
