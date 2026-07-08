@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { ArrowDown, CheckCircle2, Circle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle } from "lucide-react";
 
 import { Card, CardContent } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
@@ -13,17 +13,9 @@ export function ProcessingOverviewPage(): JSX.Element {
   const translated = Math.floor(uniqueStories * 0.8);
   const readyForReview = Math.floor(translated * 0.9);
 
-  const stages = [
-    "Collect",
-    "Normalize",
-    "Duplicate Detection",
-    "Translation",
-    "AI Rewrite",
-    "Editorial Review",
-    "Ready to Publish"
-  ];
+  const stages = ["Collect", "Process", "Review", "Publish"];
 
-  const completedStages = collectionResult ? 7 : 4;
+  const completedStages = collectionResult ? 4 : 2;
 
   const stats = [
     { label: "Collected", value: collected || 102 },
@@ -40,24 +32,34 @@ export function ProcessingOverviewPage(): JSX.Element {
       </header>
 
       <Card className="border-[#f5c518]/55 bg-white">
-        <CardContent className="space-y-2 p-7">
-          {stages.map((stage, index) => {
-            const done = index < completedStages;
-            return (
-              <div key={stage}>
+        <CardContent className="space-y-4 p-7">
+          <div className="grid gap-3 md:grid-cols-4">
+            {stages.map((stage, index) => {
+              const done = index < completedStages;
+              return (
                 <motion.div
-                  initial={{ opacity: 0, x: -16 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.07, duration: 0.35 }}
-                  className="flex items-center gap-3"
+                  key={stage}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.06, duration: 0.35 }}
+                  className="rounded-2xl border px-4 py-4 text-center"
+                  style={{
+                    borderColor: done ? "rgba(16,185,129,0.25)" : "rgba(216,225,239,1)",
+                    background: done ? "rgba(236,253,245,1)" : "rgba(255,255,255,1)"
+                  }}
                 >
-                  {done ? <CheckCircle2 className="h-5 w-5 text-emerald-600" /> : <Circle className="h-5 w-5 text-slate-300" />}
-                  <p className={done ? "font-semibold text-emerald-700" : "font-medium text-[#4d6391]"}>{stage}</p>
+                  {done ? <CheckCircle2 className="mx-auto h-5 w-5 text-emerald-600" /> : <Circle className="mx-auto h-5 w-5 text-slate-300" />}
+                  <p className={done ? "mt-3 font-semibold text-emerald-700" : "mt-3 font-medium text-[#4d6391]"}>{stage}</p>
                 </motion.div>
-                {index < stages.length - 1 ? <ArrowDown className="my-1.5 ml-0.5 h-4 w-4 text-slate-300" /> : null}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-center gap-3 text-[#b5c3dd]">
+            {stages.map((stage, index) =>
+              index < stages.length - 1 ? <ArrowRight key={`${stage}-arrow`} className="h-4 w-4" /> : null
+            )}
+          </div>
         </CardContent>
       </Card>
 

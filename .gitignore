@@ -41,3 +41,6 @@ backend/__pycache__
 
 # OS
 .DS_Store
+
+# Miscellaneous
+komentari/

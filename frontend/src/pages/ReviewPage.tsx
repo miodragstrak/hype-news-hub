@@ -1,10 +1,43 @@
 import { Link, Navigate, useParams } from "react-router-dom";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ExternalLink } from "lucide-react";
 
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
+import type { NormalizedArticle, StorySummary } from "../types/news";
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function getRepresentativeArticle(articles: NormalizedArticle[], story: StorySummary | null): NormalizedArticle | null {
+  if (!story || articles.length === 0) {
+    return null;
+  }
+
+  const normalizedHeadline = normalizeText(story.headline);
+  const sourceMatches = articles.filter((article) => story.sources.includes(article.source));
+  const candidates = sourceMatches.length > 0 ? sourceMatches : articles;
+
+  const scoredCandidates = candidates.map((article) => {
+    const normalizedTitle = normalizeText(article.title);
+    const exactHeadlineMatch = normalizedTitle === normalizedHeadline ? 1000 : 0;
+    const partialHeadlineMatch =
+      normalizedHeadline && normalizedTitle && (normalizedTitle.includes(normalizedHeadline) || normalizedHeadline.includes(normalizedTitle)) ? 250 : 0;
+    const samePublishTime = article.published_at === story.published_at ? 100 : 0;
+    const publishedTime = article.published_at ? new Date(article.published_at).getTime() : 0;
+
+    return {
+      article,
+      score: exactHeadlineMatch + partialHeadlineMatch + samePublishTime + publishedTime / 1_000_000_000_000
+    };
+  });
+
+  scoredCandidates.sort((left, right) => right.score - left.score);
+
+  return scoredCandidates[0]?.article ?? null;
+}
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -27,10 +60,10 @@ export function ReviewPage(): JSX.Element {
   }
 
   const targetId = articleId ? decodeURIComponent(articleId) : (stories[0]?.id ?? articles[0].external_id);
-  const article = articles.find((entry) => entry.external_id === targetId) ?? null;
   const story = stories.find((entry) => entry.id === targetId) ?? null;
+  const article = articles.find((entry) => entry.external_id === targetId) ?? getRepresentativeArticle(articles, story);
 
-  const fallbackArticle = article ?? articles[0] ?? null;
+  const fallbackArticle = article ?? (story ? null : articles[0] ?? null);
   const fallbackStory = story ?? stories[0] ?? null;
 
   const headline = fallbackArticle?.title ?? fallbackStory?.headline;
@@ -65,9 +98,18 @@ export function ReviewPage(): JSX.Element {
             </div>
             <p className="leading-8 text-[#233c6f]">{sourceText}</p>
             {sourceUrl ? (
-              <a href={sourceUrl} target="_blank" rel="noreferrer" className="inline-flex text-sm font-semibold text-[#0b1f4d] hover:text-[#34518f]">
-                Open source article
-              </a>
+              <div className="rounded-2xl border border-[#d8e1ef] bg-[#f7faff] p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#5a72a3]">Original Source</p>
+                <a
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#0b1f4d] px-4 py-2 text-sm font-semibold text-[#0b1f4d] transition-colors hover:bg-[#0b1f4d] hover:text-white"
+                >
+                  Open Original Article
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </div>
             ) : null}
           </CardContent>
         </Card>

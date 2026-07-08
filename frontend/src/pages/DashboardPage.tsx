@@ -42,7 +42,7 @@ function formatSyncTime(value: string | null): string {
 }
 
 export function DashboardPage(): JSX.Element {
-  const { sources, sourceError, isLoadingSources, collectNow, isCollecting, collectError, collectionResult, sourceArticleCounts, lastCollectedAt } = useDemoData();
+  const { sources, sourceError, isLoadingSources, collectNow, isCollecting, collectError, collectionResult, sourceArticleCounts, lastCollectedAt, articles } = useDemoData();
 
   return (
     <div className="space-y-8">
@@ -51,6 +51,13 @@ export function DashboardPage(): JSX.Element {
           const state = getSourceState(source.wordpress, source.rss);
           const newArticles = sourceArticleCounts[source.name] ?? 5;
           const flag = getSourceFlag(source.name);
+          const latestArticle = [...articles]
+            .filter((article) => article.source === source.name)
+            .sort((left, right) => {
+              const leftTime = left.published_at ? new Date(left.published_at).getTime() : 0;
+              const rightTime = right.published_at ? new Date(right.published_at).getTime() : 0;
+              return rightTime - leftTime;
+            })[0];
 
           return (
             <motion.div
@@ -83,9 +90,15 @@ export function DashboardPage(): JSX.Element {
                     <span className="text-sm font-semibold text-[#0b1f4d]">{formatSyncTime(lastCollectedAt)}</span>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[#4d6391]">New Articles</span>
-                    <span className="rounded-full border border-[#f5c518]/55 bg-[#fff7d6] px-3 py-1 text-sm font-semibold text-[#0b1f4d]">{newArticles} New Articles</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-[#f5c518]/55 bg-[#fff7d6] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#5a72a3]">New Articles</p>
+                      <p className="mt-1 text-xl font-bold text-[#0b1f4d]">{newArticles}</p>
+                    </div>
+                    <div className="rounded-2xl border border-[#d8e1ef] bg-white px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[#5a72a3]">Last Article</p>
+                      <p className="mt-1 line-clamp-2 text-sm font-medium leading-6 text-[#0b1f4d]">{latestArticle?.title ?? "No recent article"}</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
