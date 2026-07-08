@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { collectLatestNews, getDiscoverySources, getEditorialQueue, getStories } from "../services/newsService";
+import { collectLatestNews, getDemoCollectArticlesResponse, getDemoEditorialQueueResponse, getDemoStoriesResponse, getDiscoverySources, getEditorialQueue, getStories } from "../services/newsService";
 import type { CollectArticlesResponse, DiscoveryResult, EditorialStory, NormalizedArticle, StorySummary } from "../types/news";
 
 type DemoDataContextValue = {
@@ -34,12 +34,12 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
 
-  const [collectionResult, setCollectionResult] = useState<CollectArticlesResponse | null>(null);
+  const [collectionResult, setCollectionResult] = useState<CollectArticlesResponse | null>(() => getDemoCollectArticlesResponse());
   const [isCollecting, setIsCollecting] = useState(false);
   const [collectError, setCollectError] = useState<string | null>(null);
-  const [lastCollectedAt, setLastCollectedAt] = useState<string | null>(null);
-  const [stories, setStories] = useState<StorySummary[]>([]);
-  const [editorialStories, setEditorialStories] = useState<EditorialStory[]>([]);
+  const [lastCollectedAt, setLastCollectedAt] = useState<string | null>(() => new Date().toISOString());
+  const [stories, setStories] = useState<StorySummary[]>(() => getDemoStoriesResponse().stories);
+  const [editorialStories, setEditorialStories] = useState<EditorialStory[]>(() => getDemoEditorialQueueResponse().stories);
 
   useEffect(() => {
     let isMounted = true;
