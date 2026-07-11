@@ -29,6 +29,22 @@ cp .env.example .env
 npm run dev
 ```
 
+## Docker local startup
+
+```bash
+docker compose up --build
+docker compose down
+```
+
+Frontend:
+http://localhost:3000
+
+Backend:
+http://localhost:8000
+
+Swagger:
+http://localhost:8000/docs
+
 ## Sprint 2: WordPress Connector
 
 Test the first reusable WordPress connector endpoint:
