@@ -64,6 +64,8 @@ export type EditorialCoverage = "Local" | "Regional" | "International";
 export type EditorialTrend = "Rising" | "Stable" | "Declining";
 export type EditorialRisk = "Low" | "Medium" | "High";
 export type EditorialRecommendedAction = "Publish Immediately" | "Review Soon" | "Manual Review" | "Ignore";
+export type EditorialStoryWorkspaceStatus = "needs_generation" | "draft_ready" | "in_review" | "approved" | "rejected" | "ready_for_publishing" | "published";
+export type SerbianDraftStatus = "not_generated" | "demo_generated" | "ready" | "approved";
 
 export type EditorialStory = {
   id: string;
@@ -89,4 +91,57 @@ export type EditorialStory = {
 export type EditorialQueueResponse = {
   stories_total: number;
   stories: EditorialStory[];
+};
+
+export type SourceArticle = {
+  external_id: string;
+  source: string;
+  source_url: string;
+  country: string;
+  language: string | null;
+  title: string;
+  excerpt: string;
+  content: string | null;
+  featured_image: string | null;
+  published_at: string | null;
+  url: string;
+  categories: string[];
+};
+
+export type EditorialIntelligence = {
+  importance_score: number;
+  confidence_score: number;
+  coverage: EditorialCoverage;
+  risk_level: EditorialRisk;
+  recommended_action: EditorialRecommendedAction;
+  reason: string;
+};
+
+export type SerbianDraft = {
+  headline: string | null;
+  excerpt: string | null;
+  content: string | null;
+  status: SerbianDraftStatus;
+};
+
+export type ProcessingStep = {
+  key: string;
+  label: string;
+  state: "completed" | "current" | "future";
+};
+
+export type EditorialStoryWorkspace = {
+  id: string;
+  story_id: string;
+  headline: string;
+  target_language: "sr";
+  target_language_label: string;
+  status: EditorialStoryWorkspaceStatus;
+  source_articles: SourceArticle[];
+  source_count: number;
+  source_languages: string[];
+  source_countries: string[];
+  editorial_intelligence: EditorialIntelligence;
+  serbian_draft: SerbianDraft;
+  processing_history: ProcessingStep[];
 };

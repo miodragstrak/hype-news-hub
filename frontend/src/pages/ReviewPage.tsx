@@ -1,43 +1,42 @@
+import { motion } from "framer-motion";
+import { AlertCircle, CheckCircle2, ExternalLink, Languages, Loader2, Pencil, ShieldCheck, Sparkles, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useParams } from "react-router-dom";
-import { CheckCircle2, ExternalLink } from "lucide-react";
 
+import { NextStepPanel } from "../components/NextStepPanel";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { useDemoData } from "../context/DemoDataContext";
-import type { NormalizedArticle, StorySummary } from "../types/news";
+import { generateDemoEditorialStoryDraft, getEditorialStoryWorkspace } from "../services/newsService";
+import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
 
-function normalizeText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-}
+const languageLabels: Record<string, string> = {
+  sr: "Serbian",
+  hr: "Croatian",
+  bs: "Bosnian",
+  sl: "Slovenian",
+  mk: "Macedonian",
+};
 
-function getRepresentativeArticle(articles: NormalizedArticle[], story: StorySummary | null): NormalizedArticle | null {
-  if (!story || articles.length === 0) {
-    return null;
-  }
+const countryFlags: Record<string, string> = {
+  RS: "🇷🇸",
+  HR: "🇭🇷",
+  BA: "🇧🇦",
+  SI: "🇸🇮",
+  MK: "🇲🇰",
+};
 
-  const normalizedHeadline = normalizeText(story.headline);
-  const sourceMatches = articles.filter((article) => story.sources.includes(article.source));
-  const candidates = sourceMatches.length > 0 ? sourceMatches : articles;
+const statusLabels: Record<EditorialStoryWorkspace["status"], string> = {
+  needs_generation: "Needs Generation",
+  draft_ready: "Draft Ready",
+  in_review: "In Review",
+  approved: "Approved",
+  rejected: "Rejected",
+  ready_for_publishing: "Ready for Publishing",
+  published: "Published",
+};
 
-  const scoredCandidates = candidates.map((article) => {
-    const normalizedTitle = normalizeText(article.title);
-    const exactHeadlineMatch = normalizedTitle === normalizedHeadline ? 1000 : 0;
-    const partialHeadlineMatch =
-      normalizedHeadline && normalizedTitle && (normalizedTitle.includes(normalizedHeadline) || normalizedHeadline.includes(normalizedTitle)) ? 250 : 0;
-    const samePublishTime = article.published_at === story.published_at ? 100 : 0;
-    const publishedTime = article.published_at ? new Date(article.published_at).getTime() : 0;
-
-    return {
-      article,
-      score: exactHeadlineMatch + partialHeadlineMatch + samePublishTime + publishedTime / 1_000_000_000_000
-    };
-  });
-
-  scoredCandidates.sort((left, right) => right.score - left.score);
-
-  return scoredCandidates[0]?.article ?? null;
-}
+const sourceFallbackImage = "https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=1400&q=80";
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -47,107 +46,440 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString(undefined, {
     year: "numeric",
     month: "short",
-    day: "numeric"
+    day: "numeric",
   });
 }
 
+function languageLabel(language: string | null): string {
+  if (!language) {
+    return "Unknown";
+  }
+
+  return languageLabels[language] ?? language.toUpperCase();
+}
+
+function flagLabel(country: string): string {
+  return countryFlags[country] ?? "🌍";
+}
+
 export function ReviewPage(): JSX.Element {
-  const { articleId } = useParams();
-  const { articles, stories } = useDemoData();
+  const { storyId: routeStoryId } = useParams();
+  const storyId = routeStoryId ? decodeURIComponent(routeStoryId) : null;
 
-  if (articles.length === 0 && stories.length === 0) {
+  const [workspace, setWorkspace] = useState<EditorialStoryWorkspace | null>(null);
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [workspaceStatus, setWorkspaceStatus] = useState<EditorialStoryWorkspace["status"] | null>(null);
+  const [draftHeadline, setDraftHeadline] = useState("");
+  const [draftExcerpt, setDraftExcerpt] = useState("");
+  const [draftContent, setDraftContent] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!storyId) {
+      return;
+    }
+
+    let active = true;
+    setIsLoading(true);
+    setError(null);
+
+    void getEditorialStoryWorkspace(storyId)
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+
+        setWorkspace(response);
+        setWorkspaceStatus(response.status);
+        setSelectedArticleId(response.source_articles[0]?.external_id ?? null);
+        setDraftHeadline(response.serbian_draft.headline ?? "");
+        setDraftExcerpt(response.serbian_draft.excerpt ?? "");
+        setDraftContent(response.serbian_draft.content ?? "");
+      })
+      .catch((fetchError) => {
+        if (!active) {
+          return;
+        }
+
+        setError(fetchError instanceof Error ? fetchError.message : "Unable to load editorial story workspace.");
+      })
+      .finally(() => {
+        if (active) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [storyId]);
+
+  if (!storyId) {
     return <Navigate to="/review" replace />;
   }
 
-  const targetId = articleId ? decodeURIComponent(articleId) : (stories[0]?.id ?? articles[0].external_id);
-  const story = stories.find((entry) => entry.id === targetId) ?? null;
-  const article = articles.find((entry) => entry.external_id === targetId) ?? getRepresentativeArticle(articles, story);
+  const selectedArticle = workspace?.source_articles.find((article) => article.external_id === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
+  const effectiveStatus = workspaceStatus ?? workspace?.status ?? "needs_generation";
+  const hasDraft = workspace?.serbian_draft.status !== "not_generated";
 
-  const fallbackArticle = article ?? (story ? null : articles[0] ?? null);
-  const fallbackStory = story ?? stories[0] ?? null;
+  const applyWorkspace = (response: EditorialStoryWorkspace): void => {
+    setWorkspace(response);
+    setWorkspaceStatus(response.status);
+    setSelectedArticleId((current) => current ?? response.source_articles[0]?.external_id ?? null);
+    setDraftHeadline(response.serbian_draft.headline ?? "");
+    setDraftExcerpt(response.serbian_draft.excerpt ?? "");
+    setDraftContent(response.serbian_draft.content ?? "");
+  };
 
-  const headline = fallbackArticle?.title ?? fallbackStory?.headline;
-  const sourceLabel = fallbackArticle?.source ?? (fallbackStory?.sources[0] ?? "Story");
-  const publishedAt = fallbackArticle?.published_at ?? fallbackStory?.published_at ?? null;
-  const sourceText = fallbackArticle?.excerpt || fallbackArticle?.content || "Story-level editorial context is available. Review details and proceed to approve, edit, or reject.";
-  const sourceUrl = fallbackArticle?.url;
+  const handleGenerateDraft = async (): Promise<void> => {
+    if (!storyId) {
+      return;
+    }
 
-  if (!headline) {
-    return <Navigate to="/review" replace />;
-  }
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const response = await generateDemoEditorialStoryDraft(storyId);
+      applyWorkspace(response);
+      setIsEditing(false);
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : "Unable to generate demo draft.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleApprove = (): void => {
+    setWorkspaceStatus("approved");
+    setIsEditing(false);
+  };
+
+  const handleReject = (): void => {
+    if (!window.confirm("Reject this draft from the editorial workflow?")) {
+      return;
+    }
+
+    setWorkspaceStatus("rejected");
+    setIsEditing(false);
+  };
+
+  const handleSaveEdits = (): void => {
+    setIsEditing(false);
+    setWorkspaceStatus("in_review");
+  };
+
+  const nextAction = !hasDraft
+    ? { label: "Generate Demo Serbian Draft", to: undefined, onAction: () => void handleGenerateDraft(), disabled: isGenerating }
+    : effectiveStatus === "approved"
+    ? { label: "Continue to Publishing", to: "/publish", onAction: undefined, disabled: false }
+    : { label: "Review and Approve Draft", to: undefined, onAction: () => handleApprove(), disabled: false };
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-4xl font-bold tracking-tight">Editorial Review</h2>
-        <Link to="/review" className="text-sm font-semibold text-[#0b1f4d] hover:text-[#34518f]">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h2 className="text-4xl font-bold tracking-tight text-white">Editorial Story Workspace</h2>
+          <p className="mt-2 text-sm text-[#c2d3f5]">Multiple regional sources → one unified Serbian editorial story → human review → publishing.</p>
+        </div>
+        <Link to="/review" className="text-sm font-semibold text-[#d6e3ff] hover:text-white">
           Back to Queue
         </Link>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="rounded-[26px]">
-          <CardHeader>
-            <CardTitle className="text-3xl">Original Article</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              <Badge variant="muted">{sourceLabel}</Badge>
-              <h3 className="text-3xl font-semibold leading-tight">{headline}</h3>
-              <p className="text-sm text-[#5a72a3]">{formatDate(publishedAt)}</p>
-            </div>
-            <p className="leading-8 text-[#233c6f]">{sourceText}</p>
-            {sourceUrl ? (
-              <div className="rounded-2xl border border-[#d8e1ef] bg-[#f7faff] p-4">
-                <p className="text-xs uppercase tracking-[0.18em] text-[#5a72a3]">Original Source</p>
-                <a
-                  href={sourceUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#0b1f4d] px-4 py-2 text-sm font-semibold text-[#0b1f4d] transition-colors hover:bg-[#0b1f4d] hover:text-white"
-                >
-                  Open Original Article
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </div>
-            ) : null}
+      {isLoading ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-8 text-[#dbe6ff]">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading editorial story workspace...
           </CardContent>
         </Card>
+      ) : null}
 
-        <Card className="rounded-[26px] border-[#f5c518]/55 bg-gradient-to-b from-white to-[#f5f8fd]">
-          <CardHeader>
-            <CardTitle className="text-3xl">AI Rewritten Version</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <p className="rounded-2xl border border-dashed border-[#bfd0e9] bg-white p-5 leading-7 text-[#233c6f]">
-              Placeholder: AI-enhanced, executive-ready rewrite with tightened narrative, localized context, and TV-ready hooks.
-            </p>
+      {error ? (
+        <Card className="border-rose-400/40 bg-rose-500/10">
+          <CardContent className="flex items-center gap-3 p-6 text-rose-100">
+            <AlertCircle className="h-5 w-5" />
+            {error}
+          </CardContent>
+        </Card>
+      ) : null}
 
-            <div className="rounded-2xl border border-[#d8e1ef] bg-white p-5">
-              <p className="text-xs uppercase tracking-[0.2em] text-[#5a72a3]">AI Actions</p>
-              <div className="mt-3 grid gap-2 text-sm">
-                {[
-                  "Translation",
-                  "Rewrite",
-                  "SEO Title",
-                  "Categories"
-                ].map((action) => (
-                  <p key={action} className="inline-flex items-center gap-2 font-medium text-emerald-700">
-                    <CheckCircle2 className="h-4 w-4" />
-                    {action}
-                  </p>
+      {!isLoading && !error && workspace ? (
+        <>
+          <Card className="border-[#f5c518]/35 bg-[#0a285f]">
+            <CardContent className="space-y-5 p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Badge variant={effectiveStatus === "approved" ? "success" : "warning"}>{statusLabels[effectiveStatus]}</Badge>
+                    <Badge variant="muted">Target Language: Serbian</Badge>
+                    {hasDraft ? <Badge variant="warning">Demo Draft</Badge> : null}
+                  </div>
+                  <h3 className="text-3xl font-bold text-white">{workspace.headline}</h3>
+                  <p className="text-sm text-[#d6e3ff]">Nothing is published without human editorial approval.</p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                  {[
+                    { label: "Coverage", value: workspace.editorial_intelligence.coverage },
+                    { label: "Importance", value: `${workspace.editorial_intelligence.importance_score}` },
+                    { label: "Confidence", value: `${workspace.editorial_intelligence.confidence_score}%` },
+                    { label: "Recommended", value: workspace.editorial_intelligence.recommended_action },
+                    { label: "Sources", value: `${workspace.source_count}` },
+                  ].map((metric) => (
+                    <div key={metric.label} className="rounded-2xl border border-white/20 bg-[#08245a] px-4 py-3">
+                      <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">{metric.label}</p>
+                      <p className="mt-1 text-lg font-semibold text-white">{metric.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+                {workspace.processing_history.map((step, index) => (
+                  <motion.div
+                    key={step.key}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, delay: index * 0.03 }}
+                    className={`rounded-2xl border px-4 py-3 ${
+                      step.state === "completed"
+                        ? "border-emerald-400/35 bg-emerald-500/12"
+                        : step.state === "current"
+                        ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
+                        : "border-white/20 bg-[#08245a]"
+                    }`}
+                  >
+                    <p className={`text-xs uppercase tracking-[0.15em] ${step.state === "future" ? "text-[#b7c9ee]" : ""}`}>{step.label}</p>
+                  </motion.div>
                 ))}
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            <div className="flex flex-wrap gap-3 pt-2">
-              <Button variant="default">Approve</Button>
-              <Button variant="secondary">Edit</Button>
-              <Button variant="accent">Reject</Button>
+          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-2xl text-white">Original Sources</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-3">
+                  {workspace.source_articles.map((article) => {
+                    const isSelected = article.external_id === selectedArticle?.external_id;
+                    return (
+                      <button
+                        key={article.external_id}
+                        type="button"
+                        onClick={() => setSelectedArticleId(article.external_id)}
+                        className={`rounded-2xl border p-4 text-left transition ${
+                          isSelected ? "border-[#f5c518] bg-[#12357a]" : "border-white/20 bg-[#08245a] hover:border-white/35"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-lg font-semibold text-white">{flagLabel(article.country)} {article.source}</p>
+                            <p className="text-sm text-[#c2d3f5]">{languageLabel(article.language)} · {formatDate(article.published_at)}</p>
+                          </div>
+                          <Badge variant="muted">Source</Badge>
+                        </div>
+                        <p className="mt-3 text-sm text-[#dbe6ff]">{article.title}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedArticle ? (
+                  <SourceArticleDetail article={selectedArticle} multipleSources={workspace.source_count > 1} />
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl text-white">Unified Serbian Story</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  {!hasDraft ? (
+                    <div className="space-y-4 rounded-2xl border border-white/20 bg-[#08245a] p-5">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Badge variant="muted">Status: Not Generated</Badge>
+                        <Badge variant="muted">Target Language: Serbian</Badge>
+                      </div>
+                      <p className="text-sm leading-7 text-[#dbe6ff]">
+                        A single Serbian editorial version will be prepared from all verified regional sources.
+                      </p>
+                      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
+                        Demo behavior only. This does not use AI and it does not perform real translation.
+                      </div>
+                      <Button size="lg" onClick={() => void handleGenerateDraft()} disabled={isGenerating}>
+                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Languages className="mr-2 h-4 w-4" />}
+                        Generate Demo Serbian Draft
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Badge variant="warning">Demo Draft</Badge>
+                        <Badge variant={effectiveStatus === "approved" ? "success" : "muted"}>{statusLabels[effectiveStatus]}</Badge>
+                      </div>
+
+                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Headline</p>
+                        {isEditing ? (
+                          <textarea value={draftHeadline} onChange={(event) => setDraftHeadline(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
+                        ) : (
+                          <p className="mt-2 text-2xl font-semibold text-white">{draftHeadline}</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Excerpt</p>
+                        {isEditing ? (
+                          <textarea value={draftExcerpt} onChange={(event) => setDraftExcerpt(event.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
+                        ) : (
+                          <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{draftExcerpt}</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
+                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Content</p>
+                        {isEditing ? (
+                          <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="mt-2 min-h-48 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
+                        ) : (
+                          <p className="mt-2 whitespace-pre-line text-sm leading-7 text-[#dbe6ff]">{draftContent}</p>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
+                        Demo Draft: clearly marked placeholder content showing where a future unified Serbian article will appear. It is not a real AI translation.
+                      </div>
+
+                      <div className="flex flex-wrap gap-3">
+                        {isEditing ? (
+                          <Button onClick={handleSaveEdits}>Save Draft Changes</Button>
+                        ) : (
+                          <Button variant="secondary" onClick={() => setIsEditing(true)}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </Button>
+                        )}
+                        <Button onClick={handleApprove}>
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Approve
+                        </Button>
+                        <Button variant="accent" onClick={handleReject}>
+                          <XCircle className="mr-2 h-4 w-4" />
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-2xl text-white">Why This Story Matters</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Recommended Action</p>
+                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.recommended_action}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Risk Level</p>
+                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.risk_level}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Regional Coverage</p>
+                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.coverage}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Confidence</p>
+                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.confidence_score}%</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4 sm:col-span-2">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Editorial Reason</p>
+                    <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{workspace.editorial_intelligence.reason}</p>
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm text-[#d6e3ff]">
+                      <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-300" />{workspace.source_count} sources</span>
+                      <span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#f5c518]" />{workspace.source_languages.join(", ") || "Unknown languages"}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+
+          <NextStepPanel
+            message={
+              !hasDraft
+                ? "Generate a clearly marked demo Serbian draft to preview the future unified editorial story from these verified sources."
+                : effectiveStatus === "approved"
+                ? "Draft is approved. Continue to publishing to preview the package before any live integration is used."
+                : "Review the demo draft, refine it if needed, and approve it when the editorial version is ready for publishing review."
+            }
+            ctaLabel={nextAction.label}
+            ctaTo={nextAction.to}
+            onAction={nextAction.onAction}
+            disabled={nextAction.disabled}
+          />
+        </>
+      ) : null}
     </section>
+  );
+}
+
+type SourceArticleDetailProps = {
+  article: SourceArticle;
+  multipleSources: boolean;
+};
+
+function SourceArticleDetail({ article, multipleSources }: SourceArticleDetailProps): JSX.Element {
+  return (
+    <div className="space-y-4 rounded-2xl border border-white/20 bg-[#08245a] p-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="muted">{flagLabel(article.country)} {article.source}</Badge>
+        <Badge variant="muted">{languageLabel(article.language)}</Badge>
+        {multipleSources ? <Badge variant="warning">Merged Story Coverage</Badge> : null}
+      </div>
+
+      <img src={article.featured_image ?? sourceFallbackImage} alt={article.title} className="h-56 w-full rounded-2xl object-cover" />
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Headline</p>
+        <h4 className="mt-2 text-2xl font-semibold text-white">{article.title}</h4>
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Excerpt</p>
+        <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{article.excerpt || "No excerpt available."}</p>
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Content</p>
+        <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{article.content ?? "Content unavailable."}</p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {article.categories.map((category) => (
+          <Badge key={category} variant="default">
+            {category}
+          </Badge>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-[#c2d3f5]">Published {formatDate(article.published_at)}</p>
+        <a href={article.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
+          Open Original Article
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      </div>
+    </div>
   );
 }

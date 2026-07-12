@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas.editorial import EditorialQueueResponse, EditorialStory
+from app.schemas.editorial import EditorialIntelligence, EditorialQueueResponse, EditorialQueueStory
 from app.schemas.story import Story
 from app.services.story_service import get_latest_stories
 
@@ -35,7 +35,7 @@ def _parse_timestamp(value: str | None) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def _source_country_code(source: str) -> str:
+def source_country_code(source: str) -> str:
     lowered = source.lower()
     if "serbia" in lowered:
         return "RS"
@@ -51,7 +51,7 @@ def _source_country_code(source: str) -> str:
 
 
 def _coverage_for_story(story: Story) -> str:
-    country_codes = {_source_country_code(source) for source in story.sources}
+    country_codes = {source_country_code(source) for source in story.sources}
 
     if len(country_codes) >= 4:
         return "International"
@@ -141,7 +141,7 @@ def _reason_text(story: Story, coverage: str, freshness: int) -> str:
     return f"Covered by {source_count} {coverage.lower()} sources with freshness score {freshness}."
 
 
-def build_editorial_story(story: Story) -> EditorialStory:
+def build_editorial_intelligence(story: Story) -> EditorialIntelligence:
     coverage = _coverage_for_story(story)
     freshness = _freshness_score(story.published_at)
     importance = _importance_score(story, freshness, coverage)
@@ -150,7 +150,22 @@ def build_editorial_story(story: Story) -> EditorialStory:
     risk = _risk_level(story, confidence, trend)
     action = _recommended_action(importance, confidence, risk)
 
-    return EditorialStory(
+    return EditorialIntelligence(
+        importance_score=importance,
+        confidence_score=confidence,
+        coverage=coverage,
+        risk_level=risk,
+        recommended_action=action,
+        reason=_reason_text(story, coverage, freshness),
+    )
+
+
+def build_editorial_story(story: Story) -> EditorialQueueStory:
+    intelligence = build_editorial_intelligence(story)
+    freshness = _freshness_score(story.published_at)
+    trend = _trend(story, freshness)
+
+    return EditorialQueueStory(
         id=story.id,
         headline=story.headline,
         status=story.status,
@@ -161,14 +176,14 @@ def build_editorial_story(story: Story) -> EditorialStory:
         published_at=story.published_at,
         categories=story.categories,
         language=story.language,
-        importance_score=importance,
-        confidence_score=confidence,
-        coverage=coverage,
+        importance_score=intelligence.importance_score,
+        confidence_score=intelligence.confidence_score,
+        coverage=intelligence.coverage,
         trend=trend,
         freshness=freshness,
-        risk_level=risk,
-        recommended_action=action,
-        reason=_reason_text(story, coverage, freshness),
+        risk_level=intelligence.risk_level,
+        recommended_action=intelligence.recommended_action,
+        reason=intelligence.reason,
     )
 
 

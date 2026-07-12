@@ -1,4 +1,13 @@
-import type { CollectArticlesResponse, DiscoveryResult, EditorialQueueResponse, EditorialStory, NormalizedArticle, StoriesResponse, StorySummary } from "../types/news";
+import type {
+  CollectArticlesResponse,
+  DiscoveryResult,
+  EditorialQueueResponse,
+  EditorialStory,
+  EditorialStoryWorkspace,
+  NormalizedArticle,
+  StoriesResponse,
+  StorySummary,
+} from "../types/news";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
 const DEMO_MODE = API_BASE_URL.length === 0;
@@ -177,6 +186,22 @@ const STORY_SEEDS: Array<{
 ];
 
 const SOURCE_URLS = new Map(DEMO_SOURCES.map((source) => [source.name, source.url]));
+const SOURCE_LANGUAGES = new Map<string, string>([
+  ["Hype Serbia", "sr"],
+  ["Hype Croatia", "hr"],
+  ["Hype Bosnia", "bs"],
+  ["Hype Slovenia", "sl"],
+  ["Hype Macedonia", "mk"],
+  ["Hype Production", "sr"],
+]);
+const SOURCE_COUNTRIES = new Map<string, string>([
+  ["Hype Serbia", "RS"],
+  ["Hype Croatia", "HR"],
+  ["Hype Bosnia", "BA"],
+  ["Hype Slovenia", "SI"],
+  ["Hype Macedonia", "MK"],
+  ["Hype Production", "RS"],
+]);
 
 const DEMO_ARTICLES: NormalizedArticle[] = STORY_SEEDS.flatMap((story) =>
   story.sources.map((source, index) => {
@@ -188,7 +213,7 @@ const DEMO_ARTICLES: NormalizedArticle[] = STORY_SEEDS.flatMap((story) =>
       connector: "wordpress",
       source,
       source_url: sourceUrl,
-      language: "sr",
+      language: SOURCE_LANGUAGES.get(source) ?? "sr",
       title: `${story.headline}${suffix}`,
       url: `${sourceUrl}/demo/${story.id}/${index + 1}`,
       published_at: story.publishedAt,
@@ -244,6 +269,82 @@ const DEMO_COLLECTION_RESULT: CollectArticlesResponse = {
   stories_total: DEMO_STORIES.length,
   stories: DEMO_STORIES
 };
+
+const DEMO_EDITORIAL_STORY_OVERRIDES = new Map<string, Pick<EditorialStoryWorkspace, "status" | "serbian_draft">>();
+
+function buildDemoEditorialStoryWorkspace(storyId: string): EditorialStoryWorkspace {
+  const story = DEMO_STORIES.find((entry) => entry.id === storyId);
+  const queueStory = DEMO_EDITORIAL_QUEUE.find((entry) => entry.id === storyId);
+
+  if (!story || !queueStory) {
+    throw new Error(`Story '${storyId}' not found`);
+  }
+
+  const sourceArticles = DEMO_ARTICLES.filter((article) => article.external_id.includes(storyId)).map((article) => ({
+    external_id: article.external_id,
+    source: article.source,
+    source_url: article.source_url,
+    country: SOURCE_COUNTRIES.get(article.source) ?? "RS",
+    language: article.language,
+    title: article.title,
+    excerpt: article.excerpt,
+    content: article.content,
+    featured_image: article.featured_image,
+    published_at: article.published_at,
+    url: article.url,
+    categories: article.categories,
+  }));
+
+  const override = DEMO_EDITORIAL_STORY_OVERRIDES.get(storyId);
+  const serbianDraft =
+    override?.serbian_draft ?? {
+      headline: null,
+      excerpt: null,
+      content: null,
+      status: "not_generated" as const,
+    };
+  const workspaceStatus = override?.status ?? "needs_generation";
+  const currentStep = serbianDraft.status === "not_generated" ? "serbian_draft" : workspaceStatus === "approved" ? "publishing" : "human_review";
+  const processingHistory = [
+    ["collected", "Collected"],
+    ["normalized", "Normalized"],
+    ["sources_merged", "Sources Merged"],
+    ["editorially_scored", "Editorially Scored"],
+    ["serbian_draft", "Serbian Draft"],
+    ["human_review", "Human Review"],
+    ["publishing", "Publishing"],
+  ].map(([key, label], index, steps) => {
+    const currentIndex = steps.findIndex(([stepKey]) => stepKey === currentStep);
+    return {
+      key,
+      label,
+      state: index < currentIndex ? "completed" : index === currentIndex ? "current" : "future",
+    } as const;
+  });
+
+  return {
+    id: story.id,
+    story_id: story.id,
+    headline: story.headline,
+    target_language: "sr",
+    target_language_label: "Serbian",
+    status: workspaceStatus,
+    source_articles: sourceArticles,
+    source_count: sourceArticles.length,
+    source_languages: [...new Set(sourceArticles.map((article) => article.language).filter(Boolean))] as string[],
+    source_countries: [...new Set(sourceArticles.map((article) => article.country))],
+    editorial_intelligence: {
+      importance_score: queueStory.importance_score,
+      confidence_score: queueStory.confidence_score,
+      coverage: queueStory.coverage,
+      risk_level: queueStory.risk_level,
+      recommended_action: queueStory.recommended_action,
+      reason: queueStory.reason,
+    },
+    serbian_draft: serbianDraft,
+    processing_history: processingHistory,
+  };
+}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -304,6 +405,10 @@ export function getDemoCollectArticlesResponse(): CollectArticlesResponse {
   return clone(DEMO_COLLECTION_RESULT);
 }
 
+export function getDemoEditorialStoryWorkspace(storyId: string): EditorialStoryWorkspace {
+  return clone(buildDemoEditorialStoryWorkspace(storyId));
+}
+
 export async function getDiscoverySources(): Promise<DiscoveryResult[]> {
   return fetchWithFallback("/api/discovery", DEMO_SOURCES, "Unable to fetch source discovery");
 }
@@ -332,4 +437,45 @@ export async function getEditorialQueue(): Promise<EditorialQueueResponse> {
     },
     "Unable to fetch editorial queue"
   );
+}
+
+export async function getEditorialStoryWorkspace(storyId: string): Promise<EditorialStoryWorkspace> {
+  if (DEMO_MODE) {
+    logDemoFallback("VITE_API_URL/VITE_API_BASE_URL not configured");
+    return getDemoEditorialStoryWorkspace(storyId);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/editorial-stories/${encodeURIComponent(storyId)}`);
+  if (!response.ok) {
+    throw new Error(response.status === 404 ? "Editorial story not found" : `Unable to fetch editorial story (status ${response.status})`);
+  }
+
+  return (await response.json()) as EditorialStoryWorkspace;
+}
+
+export async function generateDemoEditorialStoryDraft(storyId: string): Promise<EditorialStoryWorkspace> {
+  if (DEMO_MODE) {
+    const workspace = buildDemoEditorialStoryWorkspace(storyId);
+    const primaryArticle = workspace.source_articles[0];
+    DEMO_EDITORIAL_STORY_OVERRIDES.set(storyId, {
+      status: "draft_ready",
+      serbian_draft: {
+        headline: workspace.headline,
+        excerpt: primaryArticle?.excerpt ?? workspace.headline,
+        content:
+          "Demo Draft\n\nThis deterministic placeholder shows where the future unified Serbian editorial story will appear. It is not real AI output and it is not a real translation. The final Serbian version will later be prepared from all verified regional source articles listed in this workspace.",
+        status: "demo_generated",
+      },
+    });
+    return getDemoEditorialStoryWorkspace(storyId);
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/editorial-stories/${encodeURIComponent(storyId)}/generate-demo-draft`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(response.status === 404 ? "Editorial story not found" : `Unable to generate demo draft (status ${response.status})`);
+  }
+
+  return (await response.json()) as EditorialStoryWorkspace;
 }

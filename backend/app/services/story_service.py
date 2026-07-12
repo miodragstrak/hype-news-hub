@@ -106,6 +106,14 @@ def get_latest_stories() -> list[Story]:
     return _sort_stories(_latest_stories)
 
 
+def get_story_by_id(story_id: str) -> Story | None:
+    for story in _latest_stories:
+        if story.id == story_id:
+            return story
+
+    return None
+
+
 def get_stories_response() -> StoriesResponse:
     story_summaries = [_story_summary(story) for story in get_latest_stories()]
     return StoriesResponse(stories_total=len(story_summaries), stories=story_summaries)

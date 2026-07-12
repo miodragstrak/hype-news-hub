@@ -1,34 +1,42 @@
 import { motion } from "framer-motion";
-import { Send, Sparkles, TimerReset } from "lucide-react";
+import { Sparkles, TimerReset } from "lucide-react";
 
+import { NextStepPanel } from "../components/NextStepPanel";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
+import { isDemoDataModeEnabled } from "../services/newsService";
 
 export function PublishPage(): JSX.Element {
-  const { collectionResult } = useDemoData();
+  const { collectionResult, stories } = useDemoData();
 
-  const collected = collectionResult?.articles_total ?? 102;
-  const duplicatesRemoved = Math.floor(collected * 0.3);
+  const collected = collectionResult?.articles_total ?? 25;
+  const duplicatesRemoved = Math.floor(collected * 0.12);
   const uniqueStories = Math.max(collected - duplicatesRemoved, 0);
-  const readyForReview = Math.floor(uniqueStories * 0.82);
-  const readyToPublish = Math.floor(readyForReview * 0.76);
+  const readyForReview = Math.floor(uniqueStories * 0.7);
+  const readyToPublish = stories.filter((story) => story.status === "review" || story.status === "draft").length;
+  const mainPortalStatus = isDemoDataModeEnabled() ? "In Progress" : "Ready";
+
   const targets = [
-    { name: "Main WordPress Portal", status: "Ready", tone: "success", note: "Primary executive publishing target." },
-    { name: "Regional Portals", status: "Planned", tone: "warning", note: "Rollout sequencing for local market delivery." },
-    { name: "Social Media", status: "Planned", tone: "warning", note: "Clip and social export automation." },
-    { name: "Newsletter", status: "Planned", tone: "warning", note: "Email distribution packaging." },
-    { name: "Mobile Push", status: "Planned", tone: "warning", note: "Push notification integration." }
+    {
+      name: "Main Hype WordPress Portal",
+      status: mainPortalStatus,
+      tone: mainPortalStatus === "Ready" ? "success" : "warning",
+      note: "Central editorial draft target. Current implementation is preview-only until final publish wiring is completed."
+    },
+    { name: "Regional Portals", status: "Planned", tone: "warning", note: "Planned for phased rollout after central portal stabilization." },
+    { name: "Social Media", status: "Planned", tone: "warning", note: "Planned export to social channels with editorial controls." },
+    { name: "Newsletter", status: "Planned", tone: "warning", note: "Planned packaging for newsletter distribution." },
+    { name: "Mobile Push", status: "Planned", tone: "warning", note: "Planned push workflow for mobile alerts." }
   ] as const;
 
   return (
     <section className="grid gap-6 lg:grid-cols-[1.25fr_1fr]">
       <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-        <Card className="h-full border-[#f5c518]/55">
+        <Card className="h-full border-[#f5c518]/55 bg-[#0a285f]">
           <CardHeader>
-            <CardDescription>Publish Readiness</CardDescription>
-            <CardTitle className="text-4xl">Ready to Broadcast</CardTitle>
+            <CardDescription>Publish Stage</CardDescription>
+            <CardTitle className="text-4xl text-white">Publish Overview</CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -38,24 +46,27 @@ export function PublishPage(): JSX.Element {
                 { label: "Ready", value: readyForReview },
                 { label: "Publish", value: readyToPublish }
               ].map((metric) => (
-                <div key={metric.label} className="rounded-2xl border border-[#d8e1ef] bg-white p-4 text-center shadow-sm">
-                  <p className="text-xs uppercase tracking-[0.16em] text-[#5a72a3]">{metric.label}</p>
-                  <p className="mt-2 text-3xl font-bold text-[#0b1f4d]">{metric.value}</p>
+                <div key={metric.label} className="rounded-2xl border border-white/20 bg-[#08245a] p-4 text-center shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#b7c9ee]">{metric.label}</p>
+                  <p className="mt-2 text-3xl font-bold text-white">{metric.value}</p>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-700">
+            <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-[#f5c518]">
                 <Sparkles className="h-4 w-4" />
-                Editorial package quality score is above launch threshold.
+                Approved stories will eventually be sent to the central Hype WordPress portal as editorial drafts.
               </p>
+              <p className="mt-2 text-sm text-[#d6e3ff]">Nothing is published automatically from this prototype. Actions can be reviewed before publishing.</p>
             </div>
 
-            <Button size="lg" className="w-full sm:w-auto">
-              <Send className="mr-2 h-4 w-4" />
-              Publish to Executive Rundown
-            </Button>
+            <div className="rounded-2xl border border-emerald-400/35 bg-emerald-500/10 p-4">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-emerald-100">
+                <Badge variant="success">Ready</Badge>
+                Editorial package preview is ready for manual verification.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </motion.div>
@@ -64,31 +75,39 @@ export function PublishPage(): JSX.Element {
         <Card>
           <CardHeader>
             <CardDescription>Distribution Channels</CardDescription>
-            <CardTitle className="text-2xl">Output Targets</CardTitle>
+            <CardTitle className="text-2xl text-white">Output Targets</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-[#d8e1ef] bg-[#f7faff] p-4 text-sm text-[#4d6391]">
-              <p className="inline-flex items-center gap-2 font-semibold text-[#0b1f4d]">
+            <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4 text-sm text-[#d6e3ff]">
+              <p className="inline-flex items-center gap-2 font-semibold text-white">
                 <TimerReset className="h-4 w-4 text-[#f5c518]" />
-                Only the main WordPress portal is implemented today.
+                Planned integrations are clearly marked.
               </p>
-              <p className="mt-2">All other distribution targets are intentionally marked as planned so unfinished functionality does not read as complete.</p>
+              <p className="mt-2">Unfinished integrations do not appear operational. Status labels indicate the actual implementation state.</p>
             </div>
 
             {targets.map((target) => (
-              <div key={target.name} className="rounded-2xl border border-slate-200 px-4 py-4">
+              <div key={target.name} className="rounded-2xl border border-white/20 bg-[#08245a] px-4 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-[#0b1f4d]">{target.name}</p>
-                    <p className="mt-1 text-sm text-[#4d6391]">{target.note}</p>
+                    <p className="font-semibold text-white">{target.name}</p>
+                    <p className="mt-1 text-sm text-[#c2d3f5]">{target.note}</p>
                   </div>
-                  <Badge variant={target.tone === "success" ? "success" : "warning"}>{target.status}</Badge>
+                  <Badge variant={target.status === "Ready" ? "success" : "warning"}>{target.status}</Badge>
                 </div>
               </div>
             ))}
           </CardContent>
         </Card>
       </motion.div>
+
+      <div className="lg:col-span-2">
+        <NextStepPanel
+          message="Preview the publishing package to confirm approved stories before any live distribution integration is enabled."
+          ctaLabel="Preview Publishing Package"
+          ctaTo="/publish"
+        />
+      </div>
     </section>
   );
 }

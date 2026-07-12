@@ -5,19 +5,23 @@
 @tailwind utilities;
 
 :root {
+  --hype-bg: #07173d;
+  --hype-surface: #0b2a67;
+  --hype-surface-soft: #10367f;
+  --hype-text: #f4f8ff;
+  --hype-text-secondary: #c2d3f5;
   --hype-yellow: #f5c518;
-  --hype-yellow-hover: #e5b300;
-  --hype-blue: #0b1f4d;
-  --hype-blue-soft: #34518f;
-  --hype-surface: #f5f8fd;
+  --hype-yellow-hover: #e1b003;
+  --hype-success: #22a565;
+  --hype-border: rgba(219, 235, 255, 0.24);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   font-family: "Manrope", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  background: #ffffff;
-  color: var(--hype-blue);
+  background: var(--hype-bg);
+  color: var(--hype-text);
   letter-spacing: -0.01em;
 }
 
