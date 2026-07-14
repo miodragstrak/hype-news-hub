@@ -36,8 +36,6 @@ const statusLabels: Record<EditorialStoryWorkspace["status"], string> = {
   published: "Published",
 };
 
-const sourceFallbackImage = "https://images.unsplash.com/photo-1495020689067-958852a7765e?auto=format&fit=crop&w=1400&q=80";
-
 function formatDate(value: string | null): string {
   if (!value) {
     return "Date unavailable";
@@ -211,18 +209,18 @@ export function ReviewPage(): JSX.Element {
         <>
           <Card className="border-[#f5c518]/35 bg-[#0a285f]">
             <CardContent className="space-y-5 p-6">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="space-y-3">
+              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
+                <div className="min-w-0 space-y-3">
                   <div className="flex flex-wrap items-center gap-3">
                     <Badge variant={effectiveStatus === "approved" ? "success" : "warning"}>{statusLabels[effectiveStatus]}</Badge>
                     <Badge variant="muted">Target Language: Serbian</Badge>
                     {hasDraft ? <Badge variant="warning">Demo Draft</Badge> : null}
                   </div>
-                  <h3 className="text-3xl font-bold text-white">{workspace.headline}</h3>
+                  <h3 className="break-words text-3xl font-bold leading-tight text-white">{workspace.headline}</h3>
                   <p className="text-sm text-[#d6e3ff]">Nothing is published without human editorial approval.</p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
                   {[
                     { label: "Coverage", value: workspace.editorial_intelligence.coverage },
                     { label: "Importance", value: `${workspace.editorial_intelligence.importance_score}` },
@@ -230,9 +228,9 @@ export function ReviewPage(): JSX.Element {
                     { label: "Recommended", value: workspace.editorial_intelligence.recommended_action },
                     { label: "Sources", value: `${workspace.source_count}` },
                   ].map((metric) => (
-                    <div key={metric.label} className="rounded-2xl border border-white/20 bg-[#08245a] px-4 py-3">
+                    <div key={metric.label} className="min-w-0 rounded-2xl border border-white/20 bg-[#08245a] px-4 py-3">
                       <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">{metric.label}</p>
-                      <p className="mt-1 text-lg font-semibold text-white">{metric.value}</p>
+                      <p className="mt-1 break-words text-lg font-semibold text-white">{metric.value}</p>
                     </div>
                   ))}
                 </div>
@@ -278,14 +276,14 @@ export function ReviewPage(): JSX.Element {
                           isSelected ? "border-[#f5c518] bg-[#12357a]" : "border-white/20 bg-[#08245a] hover:border-white/35"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
                             <p className="text-lg font-semibold text-white">{flagLabel(article.country)} {article.source}</p>
                             <p className="text-sm text-[#c2d3f5]">{languageLabel(article.language)} · {formatDate(article.published_at)}</p>
                           </div>
-                          <Badge variant="muted">Source</Badge>
+                          <Badge variant="muted" className="shrink-0">Source</Badge>
                         </div>
-                        <p className="mt-3 text-sm text-[#dbe6ff]">{article.title}</p>
+                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#dbe6ff]">{article.title}</p>
                       </button>
                     );
                   })}
@@ -448,7 +446,7 @@ function SourceArticleDetail({ article, multipleSources }: SourceArticleDetailPr
         {multipleSources ? <Badge variant="warning">Merged Story Coverage</Badge> : null}
       </div>
 
-      <img src={article.featured_image ?? sourceFallbackImage} alt={article.title} className="h-56 w-full rounded-2xl object-cover" />
+      <SourceArticleImage src={article.featured_image} title={article.title} />
 
       <div>
         <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Headline</p>
@@ -475,11 +473,44 @@ function SourceArticleDetail({ article, multipleSources }: SourceArticleDetailPr
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-[#c2d3f5]">Published {formatDate(article.published_at)}</p>
-        <a href={article.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
+        <a href={article.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
           Open Original Article
           <ExternalLink className="h-4 w-4" />
         </a>
       </div>
     </div>
+  );
+}
+
+type SourceArticleImageProps = {
+  src: string | null;
+  title: string;
+};
+
+function SourceArticleImage({ src, title }: SourceArticleImageProps): JSX.Element {
+  const [hasFailed, setHasFailed] = useState(false);
+
+  useEffect(() => {
+    setHasFailed(false);
+  }, [src]);
+
+  if (!src || hasFailed) {
+    return (
+      <div className="flex min-h-36 items-center justify-center rounded-2xl border border-white/20 bg-[#0a285f] px-5 py-8 text-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f5c518]">Hype World News</p>
+          <p className="mt-2 text-sm text-[#dbe6ff]">Original source image unavailable.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={title}
+      className="h-56 w-full rounded-2xl object-cover"
+      onError={() => setHasFailed(true)}
+    />
   );
 }

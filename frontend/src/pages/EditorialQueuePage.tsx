@@ -81,34 +81,40 @@ export function EditorialQueuePage(): JSX.Element {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: index * 0.03, duration: 0.35 }}
           >
-            <Card className="overflow-hidden rounded-[26px]">
+            <Card className="h-full overflow-hidden rounded-[26px]">
               <img src={getStoryImage(story.id, index)} alt={story.headline} className="h-52 w-full object-cover" />
-              <div className="flex min-h-36 items-end bg-gradient-to-r from-[#0d2d6e] to-[#0a255d] px-7 pb-6 pt-6">
-                <div className="space-y-3">
+              <Link
+                to={`/review/${encodeURIComponent(story.id)}`}
+                className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5c518] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07173d]"
+                aria-label={`Review story: ${story.headline}`}
+              >
+                <div className="flex min-h-48 items-end bg-gradient-to-r from-[#0d2d6e] to-[#0a255d] px-5 pb-6 pt-6 sm:px-7">
+                  <div className="min-w-0 space-y-3">
                   <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-[#5a72a3]">
                     <Globe2 className="h-4 w-4" />
                     Editorial Signal
                   </p>
-                  <h3 className="max-w-2xl text-3xl font-semibold leading-tight tracking-tight text-white">{story.headline}</h3>
+                  <h3 className="line-clamp-3 max-w-2xl text-2xl font-semibold leading-tight tracking-tight text-white xl:text-3xl">{story.headline}</h3>
                   <div className="flex flex-wrap items-center gap-2 text-2xl">{getFlagCluster(story.sources)}</div>
+                  </div>
                 </div>
-              </div>
+              </Link>
               <CardContent className="space-y-5 p-7">
                 <p className="text-sm text-[#c2d3f5]">Published {formatDate(story.published_at)}</p>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                   {[
                     { label: "Sources", value: story.source_count, icon: Hash },
                     { label: "Coverage", value: story.coverage, icon: ShieldCheck },
                     { label: "Similarity", value: `${story.similarity_score}%`, icon: Sparkles },
                     { label: "Importance", value: story.importance_score, icon: Gauge }
                   ].map((metric) => (
-                    <div key={metric.label} className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-                      <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">
+                    <div key={metric.label} className="min-w-0 rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                      <p className="inline-flex min-w-0 items-center gap-2 text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">
                         <metric.icon className="h-4 w-4" />
                         {metric.label}
                       </p>
-                      <p className="mt-2 text-lg font-semibold text-white">{metric.value}</p>
+                      <p className="mt-2 break-words text-lg font-semibold text-white">{metric.value}</p>
                     </div>
                   ))}
                 </div>
@@ -139,11 +145,11 @@ export function EditorialQueuePage(): JSX.Element {
 
                 <div className="rounded-xl border border-white/20 bg-[#0a285f] p-4">
                   <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Recommended Action</p>
-                  <p className="mt-1 font-semibold text-white">{story.recommended_action}</p>
+                  <p className="mt-1 break-words font-semibold text-white">{story.recommended_action}</p>
                   <p className="mt-2 text-sm text-[#d5e1fb]">{story.reason}</p>
                 </div>
 
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <Badge variant="success">{story.status === "review" ? "Ready" : story.status}</Badge>
                   <Link to={`/review/${encodeURIComponent(story.id)}`}>
                     <Button>

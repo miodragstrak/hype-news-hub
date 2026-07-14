@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { NextStepPanel } from "../components/NextStepPanel";
@@ -17,7 +17,33 @@ function getFlag(name: string): string {
   return "🇷🇸";
 }
 
-const stages = ["Waiting", "Collecting", "Normalizing", "Creating Stories", "Scoring", "Completed"];
+const stages = [
+  {
+    completed: "AI collected articles",
+    current: "AI collects the latest articles...",
+    future: "AI collects articles"
+  },
+  {
+    completed: "AI normalized content",
+    current: "AI normalizes incoming content...",
+    future: "AI normalizes content"
+  },
+  {
+    completed: "AI grouped related stories",
+    current: "AI groups related stories...",
+    future: "AI groups related stories"
+  },
+  {
+    completed: "AI evaluated editorial importance",
+    current: "AI evaluates editorial importance...",
+    future: "AI evaluates editorial importance"
+  },
+  {
+    completed: "Ready for review",
+    current: "AI prepares the editorial queue...",
+    future: "Ready for review"
+  }
+];
 
 function getStageIndex(isCollecting: boolean, hasCollection: boolean, sourceIndex: number, tick: number): number {
   if (hasCollection) {
@@ -25,11 +51,11 @@ function getStageIndex(isCollecting: boolean, hasCollection: boolean, sourceInde
   }
 
   if (!isCollecting) {
-    return 0;
+    return -1;
   }
 
-  const stepped = Math.floor((tick + sourceIndex * 2) / 2) + 1;
-  return Math.max(1, Math.min(stages.length - 2, stepped));
+  const stepped = Math.floor((tick + sourceIndex * 2) / 2);
+  return Math.max(0, Math.min(stages.length - 1, stepped));
 }
 
 export function CollectionProgressPage(): JSX.Element {
@@ -74,7 +100,7 @@ export function CollectionProgressPage(): JSX.Element {
           </div>
           <Button size="lg" onClick={() => void collectNow()} disabled={isCollecting}>
             {isCollecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {isCollecting ? "Collecting..." : "Start Collection"}
+            {isCollecting ? "AI collects articles..." : "Start Collection"}
           </Button>
         </CardContent>
       </Card>
@@ -83,8 +109,10 @@ export function CollectionProgressPage(): JSX.Element {
         {sources.map((source, index) => {
           const count = sourceArticleCounts[source.name] ?? 5;
           const stageIndex = getStageIndex(isCollecting, isComplete, index, tick);
-          const progress = isComplete ? Math.min(100, Math.round((count / maxArticles) * 100)) : isCollecting ? Math.min(98, 8 + stageIndex * 17) : 6;
+          const currentStep = isComplete ? stages.length : Math.max(0, stageIndex + 1);
+          const progress = isComplete ? 100 : isCollecting ? Math.min(96, Math.max(12, currentStep * 19)) : 0;
           const flag = getFlag(source.name);
+          const currentStage = stageIndex >= 0 ? stages[stageIndex] : null;
 
           return (
             <motion.div
@@ -100,21 +128,29 @@ export function CollectionProgressPage(): JSX.Element {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b7c9ee]">Current Stage</p>
-                    <p className="text-sm font-semibold text-white">{stages[stageIndex]}</p>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b7c9ee]">Source Progress</p>
+                      <p className="text-sm font-semibold text-white">
+                        {isComplete ? "Completed" : currentStage ? currentStage.current : "Ready to start"}
+                      </p>
+                    </div>
+                    <div className="shrink-0 rounded-full border border-white/20 bg-[#08245a] px-3 py-1 text-xs font-semibold text-[#dbe6ff]">
+                      Step {currentStep} of {stages.length}
+                    </div>
                   </div>
 
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-3">
+                  <div className="grid gap-2">
                     {stages.map((stage, stagePosition) => {
-                      const isActive = stagePosition === stageIndex;
-                      const isStageComplete = stagePosition < stageIndex || (isComplete && stagePosition === stages.length - 1);
+                      const isActive = isCollecting && !isComplete && stagePosition === stageIndex;
+                      const isStageComplete = isComplete || stagePosition < stageIndex;
+                      const label = isStageComplete ? stage.completed : isActive ? stage.current : stage.future;
 
                       return (
                         <div
-                          key={stage}
+                          key={stage.future}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em]",
+                            "flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold",
                             isStageComplete
                               ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
                               : isActive
@@ -128,9 +164,15 @@ export function CollectionProgressPage(): JSX.Element {
                               isActive ? "bg-[#07173d]/15" : isStageComplete ? "bg-emerald-500/25" : "bg-[#12357a]"
                             )}
                           >
-                            {stagePosition + 1}
+                            {isStageComplete ? (
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                            ) : isActive ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Circle className="h-3 w-3" />
+                            )}
                           </span>
-                          <span>{stage}</span>
+                          <span>{label}</span>
                         </div>
                       );
                     })}
@@ -147,13 +189,15 @@ export function CollectionProgressPage(): JSX.Element {
 
                   <div className="flex items-center justify-between text-sm">
                     <p className="font-medium text-[#dbe6ff]">{count} Articles</p>
-                    {progress >= 95 ? (
+                    {isComplete ? (
                       <p className="inline-flex items-center gap-1.5 font-semibold text-emerald-200">
                         <CheckCircle2 className="h-4 w-4" />
                         Completed
                       </p>
+                    ) : isCollecting ? (
+                      <p className="font-semibold text-[#f5c518]">{progress}%</p>
                     ) : (
-                      <p className="font-semibold text-[#f5c518]">In Progress</p>
+                      <p className="font-semibold text-[#b7c9ee]">0%</p>
                     )}
                   </div>
                 </CardContent>
@@ -193,7 +237,7 @@ export function CollectionProgressPage(): JSX.Element {
         message={
           isComplete
             ? "Collection is complete. Continue to processing to merge duplicate articles and create editorial stories."
-            : "Start collection using the main action above. Cards will move through waiting, collecting, normalizing, creating stories, and scoring."
+            : "Start collection using the main action above. AI collects articles, normalizes content, groups stories, and prepares the review queue."
         }
         ctaLabel={isComplete ? "Continue to Processing" : "Start Collection"}
         ctaTo={isComplete ? "/process" : undefined}

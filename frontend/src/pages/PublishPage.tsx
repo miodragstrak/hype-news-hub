@@ -15,7 +15,7 @@ export function PublishPage(): JSX.Element {
   const uniqueStories = Math.max(collected - duplicatesRemoved, 0);
   const readyForReview = Math.floor(uniqueStories * 0.7);
   const readyToPublish = stories.filter((story) => story.status === "review" || story.status === "draft").length;
-  const mainPortalStatus = isDemoDataModeEnabled() ? "In Progress" : "Ready";
+  const mainPortalStatus = isDemoDataModeEnabled() ? "Preview Only" : "Ready";
 
   const targets = [
     {

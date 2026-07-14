@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Circle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { Fragment } from "react";
 import { Link } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
@@ -16,15 +17,16 @@ export function ProcessingOverviewPage(): JSX.Element {
   const readyForReview = Math.max(1, Math.floor(uniqueStories * 0.68));
 
   const processingStages = [
-    "Collected Articles",
-    "Normalized",
-    "Stories Created",
-    "Duplicates Merged",
-    "Editorially Scored",
-    "Ready for Review"
+    { label: "Collected Articles", message: "AI collected articles" },
+    { label: "Normalized", message: "AI normalized content" },
+    { label: "Stories Created", message: "AI groups related stories..." },
+    { label: "Duplicates Merged", message: "AI merges duplicate coverage..." },
+    { label: "Editorially Scored", message: "AI evaluates editorial importance..." },
+    { label: "Ready for Review", message: "AI prepares the editorial queue..." }
   ];
 
-  const completedStages = collectionResult ? processingStages.length : 2;
+  const activeStageIndex = collectionResult ? -1 : 0;
+  const completedStages = collectionResult ? processingStages.length : 0;
 
   const stats = [
     { label: "Articles Collected", value: collected },
@@ -45,29 +47,48 @@ export function ProcessingOverviewPage(): JSX.Element {
 
       <Card className="border-white/25 bg-[#0a285f]">
         <CardContent className="space-y-4 p-7">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-[repeat(11,max-content)] lg:items-center lg:overflow-visible">
             {processingStages.map((stage, index) => {
               const done = index < completedStages;
+              const active = activeStageIndex === index;
               return (
-                <motion.div
-                  key={stage}
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.06, duration: 0.35 }}
-                  className="inline-flex items-center gap-2 rounded-2xl border px-4 py-3"
-                  style={done ? { borderColor: "rgba(52,211,153,0.35)", background: "rgba(16,185,129,0.12)" } : { borderColor: "rgba(255,255,255,0.2)", background: "rgba(8,36,90,1)" }}
-                >
-                  {done ? <CheckCircle2 className="h-5 w-5 text-emerald-200" /> : <Circle className="h-5 w-5 text-[#b0c3ea]" />}
-                  <p className={done ? "font-semibold text-emerald-50" : "font-medium text-[#d4e2ff]"}>{stage}</p>
-                </motion.div>
+                <Fragment key={stage.label}>
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.06, duration: 0.35 }}
+                    className={`inline-flex min-w-[190px] items-center gap-2 rounded-2xl border px-4 py-3 ${
+                      done
+                        ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-50"
+                        : active
+                        ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
+                        : "border-white/20 bg-[#08245a] text-[#d4e2ff]"
+                    }`}
+                  >
+                    {done ? (
+                      <CheckCircle2 className="h-5 w-5 shrink-0" />
+                    ) : active ? (
+                      <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
+                    ) : (
+                      <Circle className="h-5 w-5 shrink-0 text-[#b0c3ea]" />
+                    )}
+                    <p className="text-sm font-semibold leading-snug">{stage.label}</p>
+                  </motion.div>
+                  {index < processingStages.length - 1 ? (
+                    <ArrowRight className="hidden h-5 w-5 shrink-0 self-center text-[#f5c518] lg:block" />
+                  ) : null}
+                </Fragment>
               );
             })}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-[#f5c518]">
-            {processingStages.map((stage, index) =>
-              index < processingStages.length - 1 ? <ArrowRight key={`${stage}-arrow`} className="h-4 w-4" /> : null
-            )}
+          <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b7c9ee]">
+              {isProcessingComplete ? "Completed" : `Step ${activeStageIndex + 1} of ${processingStages.length}`}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-white">
+              {isProcessingComplete ? "AI prepared stories for review." : processingStages[activeStageIndex].message}
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -106,15 +127,13 @@ export function ProcessingOverviewPage(): JSX.Element {
         </Card>
       )}
 
-      <NextStepPanel
-        message={
-          isProcessingComplete
-            ? "Processing is complete. Review editorial stories to approve, edit, or reject each item."
-            : "Collection is required before processing can complete. Go back and run Start Collection."
-        }
-        ctaLabel={isProcessingComplete ? "Review Editorial Stories" : "Return to Collect"}
-        ctaTo={isProcessingComplete ? "/review" : "/"}
-      />
+      {!isProcessingComplete ? (
+        <NextStepPanel
+          message="Collection is required before processing can complete. Go back and run Start Collection."
+          ctaLabel="Return to Collect"
+          ctaTo="/"
+        />
+      ) : null}
     </section>
   );
 }

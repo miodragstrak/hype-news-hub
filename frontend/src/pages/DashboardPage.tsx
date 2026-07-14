@@ -115,7 +115,7 @@ export function DashboardPage(): JSX.Element {
           </div>
           <Button size="lg" onClick={() => void collectNow()} disabled={isCollecting}>
             {isCollecting ? <RefreshCw className="mr-2 h-5 w-5 animate-spin" /> : null}
-            {isCollecting ? "Collecting..." : "Collect Latest News"}
+            {isCollecting ? "AI collects articles..." : "Collect Latest News"}
           </Button>
         </CardContent>
       </Card>
