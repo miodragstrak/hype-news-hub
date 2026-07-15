@@ -88,7 +88,7 @@ export function CollectionProgressPage(): JSX.Element {
     <div className="space-y-6">
       <header className="space-y-2">
         <h2 className="text-4xl font-bold tracking-tight text-white">Collect Latest News</h2>
-        <p className="text-[#c2d3f5]">Gather the latest articles from all connected Hype sources.</p>
+        <p className="text-[#c2d3f5]">AI collects the latest articles from all connected Hype sources.</p>
         <p className="text-sm text-[#b5c8ed]">Nothing is published without editorial approval.</p>
       </header>
 
@@ -96,7 +96,7 @@ export function CollectionProgressPage(): JSX.Element {
         <CardContent className="flex flex-col gap-4 p-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#bcd0f6]">Collection Control</p>
-            <p className="mt-2 text-sm text-[#dbe7ff]">Start collection to run intake, normalization, story creation, and scoring.</p>
+            <p className="mt-2 text-sm text-[#dbe7ff]">Start collection to verify sources, normalize content, group stories, and prepare review.</p>
           </div>
           <Button size="lg" onClick={() => void collectNow()} disabled={isCollecting}>
             {isCollecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -216,7 +216,7 @@ export function CollectionProgressPage(): JSX.Element {
       {isComplete ? (
         <Card className="border-emerald-400/35 bg-emerald-500/10">
           <CardContent className="space-y-3 p-6">
-            <h3 className="text-2xl font-bold text-emerald-100">Collection Complete</h3>
+            <h3 className="text-2xl font-bold text-emerald-100">Collection completed successfully.</h3>
             <ul className="space-y-1 text-sm text-emerald-50">
               <li>Sources processed: {sourcesProcessed}</li>
               <li>Articles collected: {collectedArticles}</li>
@@ -241,7 +241,8 @@ export function CollectionProgressPage(): JSX.Element {
         }
         ctaLabel={isComplete ? "Continue to Processing" : "Start Collection"}
         ctaTo={isComplete ? "/process" : undefined}
-        disabled={isCollecting || !isComplete}
+        onAction={isComplete ? undefined : () => void collectNow()}
+        disabled={isCollecting}
       />
     </div>
   );

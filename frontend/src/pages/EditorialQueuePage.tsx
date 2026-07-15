@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Gauge, Globe2, Hash, ShieldCheck, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
@@ -82,7 +83,7 @@ export function EditorialQueuePage(): JSX.Element {
             transition={{ delay: index * 0.03, duration: 0.35 }}
           >
             <Card className="h-full overflow-hidden rounded-[26px]">
-              <img src={getStoryImage(story.id, index)} alt={story.headline} className="h-52 w-full object-cover" />
+              <StoryImage src={getStoryImage(story.id, index)} title={story.headline} />
               <Link
                 to={`/review/${encodeURIComponent(story.id)}`}
                 className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f5c518] focus-visible:ring-offset-2 focus-visible:ring-offset-[#07173d]"
@@ -170,4 +171,30 @@ export function EditorialQueuePage(): JSX.Element {
       />
     </section>
   );
+}
+
+type StoryImageProps = {
+  src: string;
+  title: string;
+};
+
+function StoryImage({ src, title }: StoryImageProps): JSX.Element {
+  const [hasFailed, setHasFailed] = useState(false);
+
+  useEffect(() => {
+    setHasFailed(false);
+  }, [src]);
+
+  if (hasFailed) {
+    return (
+      <div className="flex h-52 w-full items-center justify-center bg-[#08245a] px-5 text-center">
+        <div>
+          <p className="text-xs font-semibold uppercase text-[#f5c518]">Hype World News</p>
+          <p className="mt-2 text-sm text-[#dbe6ff]">Story image preview unavailable.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <img src={src} alt={title} className="h-52 w-full object-cover" onError={() => setHasFailed(true)} />;
 }

@@ -1,21 +1,25 @@
 import { motion } from "framer-motion";
-import { AlertCircle, CheckCircle2, ExternalLink, Languages, Loader2, Pencil, ShieldCheck, Sparkles, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, Navigate, useParams } from "react-router-dom";
+import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, ImageIcon, Loader2, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { generateDemoEditorialStoryDraft, getEditorialStoryWorkspace } from "../services/newsService";
+import { useDemoData, type EditorialDraftPackage } from "../context/DemoDataContext";
+import { getEditorialStoryWorkspace } from "../services/newsService";
 import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
+
+const PREPARED_DURING_PROCESSING = "To be prepared during editorial processing";
+const FUTURE_ARTICLE_BODY = "The final Serbian editorial article will appear here after language processing and editorial preparation.";
 
 const languageLabels: Record<string, string> = {
   sr: "Serbian",
   hr: "Croatian",
   bs: "Bosnian",
   sl: "Slovenian",
-  mk: "Macedonian",
+  mk: "Macedonian"
 };
 
 const countryFlags: Record<string, string> = {
@@ -23,30 +27,18 @@ const countryFlags: Record<string, string> = {
   HR: "🇭🇷",
   BA: "🇧🇦",
   SI: "🇸🇮",
-  MK: "🇲🇰",
+  MK: "🇲🇰"
 };
 
-const statusLabels: Record<EditorialStoryWorkspace["status"], string> = {
-  needs_generation: "Needs Generation",
-  draft_ready: "Draft Ready",
-  in_review: "In Review",
-  approved: "Approved",
-  rejected: "Rejected",
-  ready_for_publishing: "Ready for Publishing",
-  published: "Published",
-};
-
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "Date unavailable";
-  }
-
-  return new Date(value).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+const timeline = [
+  { label: "Articles Collected", state: "complete" },
+  { label: "Content Normalized", state: "complete" },
+  { label: "Related Sources Merged", state: "complete" },
+  { label: "Editorially Scored", state: "complete" },
+  { label: "Editorial Draft Prepared", state: "current" },
+  { label: "Human Approval", state: "future" },
+  { label: "WordPress Draft", state: "future" }
+] as const;
 
 function languageLabel(language: string | null): string {
   if (!language) {
@@ -57,23 +49,64 @@ function languageLabel(language: string | null): string {
 }
 
 function flagLabel(country: string): string {
-  return countryFlags[country] ?? "🌍";
+  return countryFlags[country] ?? "🌐";
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 72);
+}
+
+function uniqueValues(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function buildDraftPackage(workspace: EditorialStoryWorkspace): EditorialDraftPackage {
+  const primaryArticle = workspace.source_articles[0];
+  const categories = uniqueValues(workspace.source_articles.flatMap((article) => article.categories));
+  const headline = workspace.headline || primaryArticle?.title || PREPARED_DURING_PROCESSING;
+  const excerpt = primaryArticle?.excerpt || PREPARED_DURING_PROCESSING;
+  const category = categories[0] ?? PREPARED_DURING_PROCESSING;
+  const tags = uniqueValues([category, workspace.editorial_intelligence.coverage, "Hype World News", "Editorial Draft"]).filter(
+    (tag) => tag !== PREPARED_DURING_PROCESSING
+  );
+
+  return {
+    storyId: workspace.story_id,
+    headline,
+    slug: headline === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : slugify(headline),
+    category,
+    featuredImage: primaryArticle?.featured_image ?? null,
+    excerpt,
+    mainContent: FUTURE_ARTICLE_BODY,
+    categories: categories.length > 0 ? categories : [PREPARED_DURING_PROCESSING],
+    tags: tags.length > 0 ? tags : [PREPARED_DURING_PROCESSING],
+    seoTitle: headline === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : `${headline} | Hype World News`,
+    seoDescription: excerpt === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : excerpt.slice(0, 156),
+    sourcesUsed: workspace.source_articles.map((article) => ({
+      id: article.external_id,
+      countryFlag: flagLabel(article.country),
+      sourceName: article.source,
+      originalLanguage: languageLabel(article.language),
+      originalHeadline: article.title || PREPARED_DURING_PROCESSING,
+      url: article.url
+    }))
+  };
 }
 
 export function ReviewPage(): JSX.Element {
   const { storyId: routeStoryId } = useParams();
+  const navigate = useNavigate();
+  const { setSelectedDraftPackage } = useDemoData();
   const storyId = routeStoryId ? decodeURIComponent(routeStoryId) : null;
 
   const [workspace, setWorkspace] = useState<EditorialStoryWorkspace | null>(null);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [workspaceStatus, setWorkspaceStatus] = useState<EditorialStoryWorkspace["status"] | null>(null);
-  const [draftHeadline, setDraftHeadline] = useState("");
-  const [draftExcerpt, setDraftExcerpt] = useState("");
-  const [draftContent, setDraftContent] = useState("");
-  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     if (!storyId) {
@@ -91,11 +124,7 @@ export function ReviewPage(): JSX.Element {
         }
 
         setWorkspace(response);
-        setWorkspaceStatus(response.status);
         setSelectedArticleId(response.source_articles[0]?.external_id ?? null);
-        setDraftHeadline(response.serbian_draft.headline ?? "");
-        setDraftExcerpt(response.serbian_draft.excerpt ?? "");
-        setDraftContent(response.serbian_draft.content ?? "");
       })
       .catch((fetchError) => {
         if (!active) {
@@ -115,72 +144,28 @@ export function ReviewPage(): JSX.Element {
     };
   }, [storyId]);
 
+  const draftPackage = useMemo(() => (workspace ? buildDraftPackage(workspace) : null), [workspace]);
+  const selectedArticle = workspace?.source_articles.find((article) => article.external_id === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
+
   if (!storyId) {
     return <Navigate to="/review" replace />;
   }
 
-  const selectedArticle = workspace?.source_articles.find((article) => article.external_id === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
-  const effectiveStatus = workspaceStatus ?? workspace?.status ?? "needs_generation";
-  const hasDraft = workspace?.serbian_draft.status !== "not_generated";
-
-  const applyWorkspace = (response: EditorialStoryWorkspace): void => {
-    setWorkspace(response);
-    setWorkspaceStatus(response.status);
-    setSelectedArticleId((current) => current ?? response.source_articles[0]?.external_id ?? null);
-    setDraftHeadline(response.serbian_draft.headline ?? "");
-    setDraftExcerpt(response.serbian_draft.excerpt ?? "");
-    setDraftContent(response.serbian_draft.content ?? "");
-  };
-
-  const handleGenerateDraft = async (): Promise<void> => {
-    if (!storyId) {
+  const continueToPublishing = (): void => {
+    if (!draftPackage) {
       return;
     }
 
-    setIsGenerating(true);
-    setError(null);
-    try {
-      const response = await generateDemoEditorialStoryDraft(storyId);
-      applyWorkspace(response);
-      setIsEditing(false);
-    } catch (generateError) {
-      setError(generateError instanceof Error ? generateError.message : "Unable to generate demo draft.");
-    } finally {
-      setIsGenerating(false);
-    }
+    setSelectedDraftPackage(draftPackage);
+    navigate("/publish");
   };
-
-  const handleApprove = (): void => {
-    setWorkspaceStatus("approved");
-    setIsEditing(false);
-  };
-
-  const handleReject = (): void => {
-    if (!window.confirm("Reject this draft from the editorial workflow?")) {
-      return;
-    }
-
-    setWorkspaceStatus("rejected");
-    setIsEditing(false);
-  };
-
-  const handleSaveEdits = (): void => {
-    setIsEditing(false);
-    setWorkspaceStatus("in_review");
-  };
-
-  const nextAction = !hasDraft
-    ? { label: "Generate Demo Serbian Draft", to: undefined, onAction: () => void handleGenerateDraft(), disabled: isGenerating }
-    : effectiveStatus === "approved"
-    ? { label: "Continue to Publishing", to: "/publish", onAction: undefined, disabled: false }
-    : { label: "Review and Approve Draft", to: undefined, onAction: () => handleApprove(), disabled: false };
 
   return (
     <section className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-4xl font-bold tracking-tight text-white">Editorial Story Workspace</h2>
-          <p className="mt-2 text-sm text-[#c2d3f5]">Multiple regional sources → one unified Serbian editorial story → human review → publishing.</p>
+          <p className="mt-2 text-sm text-[#c2d3f5]">Review source material, inspect the editorial draft package, then continue to publishing preview.</p>
         </div>
         <Link to="/review" className="text-sm font-semibold text-[#d6e3ff] hover:text-white">
           Back to Queue
@@ -205,175 +190,132 @@ export function ReviewPage(): JSX.Element {
         </Card>
       ) : null}
 
-      {!isLoading && !error && workspace ? (
+      {!isLoading && !error && workspace && draftPackage ? (
         <>
-          <Card className="border-[#f5c518]/35 bg-[#0a285f]">
-            <CardContent className="space-y-5 p-6">
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">
-                <div className="min-w-0 space-y-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant={effectiveStatus === "approved" ? "success" : "warning"}>{statusLabels[effectiveStatus]}</Badge>
-                    <Badge variant="muted">Target Language: Serbian</Badge>
-                    {hasDraft ? <Badge variant="warning">Demo Draft</Badge> : null}
-                  </div>
-                  <h3 className="break-words text-3xl font-bold leading-tight text-white">{workspace.headline}</h3>
-                  <p className="text-sm text-[#d6e3ff]">Nothing is published without human editorial approval.</p>
+          <Card className="border-[#f5c518]/45 bg-[#0a285f]">
+            <CardContent className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge variant="warning">Editorial Draft</Badge>
+                  <Badge variant="muted">Status: Ready for Human Editing</Badge>
+                  <Badge variant="muted">Target Language: Serbian</Badge>
                 </div>
-
-                <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-                  {[
-                    { label: "Coverage", value: workspace.editorial_intelligence.coverage },
-                    { label: "Importance", value: `${workspace.editorial_intelligence.importance_score}` },
-                    { label: "Confidence", value: `${workspace.editorial_intelligence.confidence_score}%` },
-                    { label: "Recommended", value: workspace.editorial_intelligence.recommended_action },
-                    { label: "Sources", value: `${workspace.source_count}` },
-                  ].map((metric) => (
-                    <div key={metric.label} className="min-w-0 rounded-2xl border border-white/20 bg-[#08245a] px-4 py-3">
-                      <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">{metric.label}</p>
-                      <p className="mt-1 break-words text-lg font-semibold text-white">{metric.value}</p>
-                    </div>
-                  ))}
+                <h3 className="break-words text-3xl font-bold leading-tight text-white">{draftPackage.headline}</h3>
+                <div className="rounded-2xl border border-[#f5c518]/35 bg-[#f5c518]/10 p-4">
+                  <p className="text-lg font-bold text-white">Nothing is published automatically.</p>
+                  <p className="mt-1 text-sm font-semibold text-[#f9edb8]">Human editorial approval is always required.</p>
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-                {workspace.processing_history.map((step, index) => (
-                  <motion.div
-                    key={step.key}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25, delay: index * 0.03 }}
-                    className={`rounded-2xl border px-4 py-3 ${
-                      step.state === "completed"
-                        ? "border-emerald-400/35 bg-emerald-500/12"
-                        : step.state === "current"
-                        ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
-                        : "border-white/20 bg-[#08245a]"
-                    }`}
-                  >
-                    <p className={`text-xs uppercase tracking-[0.15em] ${step.state === "future" ? "text-[#b7c9ee]" : ""}`}>{step.label}</p>
-                  </motion.div>
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                {[
+                  { label: "Sources", value: workspace.source_count },
+                  { label: "Editorial importance", value: workspace.editorial_intelligence.importance_score },
+                  { label: "Confidence", value: `${workspace.editorial_intelligence.confidence_score}%` }
+                ].map((metric) => (
+                  <div key={metric.label} className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">{metric.label}</p>
+                    <p className="mt-2 text-2xl font-bold text-white">{metric.value}</p>
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-2xl text-white">Editorial Timeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+                {timeline.map((step) => (
+                  <div
+                    key={step.label}
+                    className={`rounded-2xl border p-4 ${
+                      step.state === "complete"
+                        ? "border-emerald-400/35 bg-emerald-500/12 text-emerald-50"
+                        : step.state === "current"
+                        ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
+                        : "border-white/20 bg-[#08245a] text-[#dbe6ff]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {step.state === "complete" ? <CheckCircle2 className="h-5 w-5" /> : step.state === "current" ? <CircleDot className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                      <p className="text-sm font-semibold">{step.label}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             <Card>
               <CardHeader>
-                <CardTitle className="text-2xl text-white">Original Sources</CardTitle>
+                <CardTitle className="text-2xl text-white">Editorial Draft</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-5">
-                <div className="grid gap-3">
-                  {workspace.source_articles.map((article) => {
-                    const isSelected = article.external_id === selectedArticle?.external_id;
-                    return (
-                      <button
-                        key={article.external_id}
-                        type="button"
-                        onClick={() => setSelectedArticleId(article.external_id)}
-                        className={`rounded-2xl border p-4 text-left transition ${
-                          isSelected ? "border-[#f5c518] bg-[#12357a]" : "border-white/20 bg-[#08245a] hover:border-white/35"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-lg font-semibold text-white">{flagLabel(article.country)} {article.source}</p>
-                            <p className="text-sm text-[#c2d3f5]">{languageLabel(article.language)} · {formatDate(article.published_at)}</p>
-                          </div>
-                          <Badge variant="muted" className="shrink-0">Source</Badge>
-                        </div>
-                        <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#dbe6ff]">{article.title}</p>
-                      </button>
-                    );
-                  })}
-                </div>
+              <CardContent className="space-y-6">
+                <article className="overflow-hidden rounded-2xl border border-white/20 bg-[#08245a]">
+                  <div className="p-5 sm:p-7">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="warning">Ready for Human Editing</Badge>
+                      <Badge variant="muted">Central Hype WordPress Portal</Badge>
+                    </div>
+                    <h1 className="mt-4 break-words text-4xl font-extrabold leading-tight text-white">{draftPackage.headline}</h1>
+                    <p className="mt-4 text-lg leading-8 text-[#dbe6ff]">{draftPackage.excerpt}</p>
+                  </div>
 
-                {selectedArticle ? (
-                  <SourceArticleDetail article={selectedArticle} multipleSources={workspace.source_count > 1} />
-                ) : null}
+                  <FeaturedImagePreview src={draftPackage.featuredImage} />
+
+                  <div className="space-y-5 p-5 sm:p-7">
+                    <DraftField label="Headline" value={draftPackage.headline} />
+                    <DraftField label="Excerpt" value={draftPackage.excerpt} />
+                    <DraftField label="Main article content" value={draftPackage.mainContent} prominent />
+                    <DraftField label="Categories" value={draftPackage.categories.join(", ")} />
+                    <DraftField label="Tags" value={draftPackage.tags.join(", ")} />
+                    <DraftField label="Slug" value={draftPackage.slug} />
+                    <DraftField label="SEO title" value={draftPackage.seoTitle} />
+                    <DraftField label="SEO description" value={draftPackage.seoDescription} />
+
+                    <div className="rounded-2xl border border-white/20 bg-[#0a285f] p-5">
+                      <p className="inline-flex items-center gap-2 text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">
+                        <ShieldCheck className="h-4 w-4" />
+                        Source attribution
+                      </p>
+                      <p className="mt-3 text-sm leading-7 text-[#eef4ff]">
+                        Prepared from {workspace.source_count} original source article{workspace.source_count === 1 ? "" : "s"}. Original language material remains available below for human verification.
+                      </p>
+                    </div>
+                  </div>
+                </article>
               </CardContent>
             </Card>
 
             <div className="space-y-6">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-2xl text-white">Unified Serbian Story</CardTitle>
+                  <CardTitle className="text-2xl text-white">Sources Used</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-5">
-                  {!hasDraft ? (
-                    <div className="space-y-4 rounded-2xl border border-white/20 bg-[#08245a] p-5">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <Badge variant="muted">Status: Not Generated</Badge>
-                        <Badge variant="muted">Target Language: Serbian</Badge>
+                <CardContent className="space-y-3">
+                  {draftPackage.sourcesUsed.length > 0 ? (
+                    draftPackage.sourcesUsed.map((source) => (
+                      <div key={source.id} className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-lg font-semibold text-white">{source.countryFlag} {source.sourceName}</p>
+                            <p className="mt-1 text-sm text-[#c2d3f5]">Original Language: {source.originalLanguage}</p>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-[#eef4ff]">{source.originalHeadline}</p>
+                        <a href={source.url} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
+                          Open Original Article
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
                       </div>
-                      <p className="text-sm leading-7 text-[#dbe6ff]">
-                        A single Serbian editorial version will be prepared from all verified regional sources.
-                      </p>
-                      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
-                        Demo behavior only. This does not use AI and it does not perform real translation.
-                      </div>
-                      <Button size="lg" onClick={() => void handleGenerateDraft()} disabled={isGenerating}>
-                        {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Languages className="mr-2 h-4 w-4" />}
-                        Generate Demo Serbian Draft
-                      </Button>
-                    </div>
+                    ))
                   ) : (
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-3">
-                        <Badge variant="warning">Demo Draft</Badge>
-                        <Badge variant={effectiveStatus === "approved" ? "success" : "muted"}>{statusLabels[effectiveStatus]}</Badge>
-                      </div>
-
-                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Headline</p>
-                        {isEditing ? (
-                          <textarea value={draftHeadline} onChange={(event) => setDraftHeadline(event.target.value)} className="mt-2 min-h-20 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
-                        ) : (
-                          <p className="mt-2 text-2xl font-semibold text-white">{draftHeadline}</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Excerpt</p>
-                        {isEditing ? (
-                          <textarea value={draftExcerpt} onChange={(event) => setDraftExcerpt(event.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
-                        ) : (
-                          <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{draftExcerpt}</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl border border-white/20 bg-[#08245a] p-5">
-                        <p className="text-xs uppercase tracking-[0.18em] text-[#b7c9ee]">Draft Content</p>
-                        {isEditing ? (
-                          <textarea value={draftContent} onChange={(event) => setDraftContent(event.target.value)} className="mt-2 min-h-48 w-full rounded-xl border border-white/20 bg-[#061a44] px-4 py-3 text-white" />
-                        ) : (
-                          <p className="mt-2 whitespace-pre-line text-sm leading-7 text-[#dbe6ff]">{draftContent}</p>
-                        )}
-                      </div>
-
-                      <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
-                        Demo Draft: clearly marked placeholder content showing where a future unified Serbian article will appear. It is not a real AI translation.
-                      </div>
-
-                      <div className="flex flex-wrap gap-3">
-                        {isEditing ? (
-                          <Button onClick={handleSaveEdits}>Save Draft Changes</Button>
-                        ) : (
-                          <Button variant="secondary" onClick={() => setIsEditing(true)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </Button>
-                        )}
-                        <Button onClick={handleApprove}>
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                          Approve
-                        </Button>
-                        <Button variant="accent" onClick={handleReject}>
-                          <XCircle className="mr-2 h-4 w-4" />
-                          Reject
-                        </Button>
-                      </div>
+                    <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-5 text-sm text-amber-50">
+                      Source attribution will be prepared during editorial processing.
                     </div>
                   )}
                 </CardContent>
@@ -381,50 +323,39 @@ export function ReviewPage(): JSX.Element {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-2xl text-white">Why This Story Matters</CardTitle>
+                  <CardTitle className="text-2xl text-white">Original Source Detail</CardTitle>
                 </CardHeader>
-                <CardContent className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Recommended Action</p>
-                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.recommended_action}</p>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3">
+                    {workspace.source_articles.map((article) => {
+                      const isSelected = article.external_id === selectedArticle?.external_id;
+                      return (
+                        <button
+                          key={article.external_id}
+                          type="button"
+                          onClick={() => setSelectedArticleId(article.external_id)}
+                          className={`rounded-2xl border p-4 text-left transition ${
+                            isSelected ? "border-[#f5c518] bg-[#12357a]" : "border-white/20 bg-[#08245a] hover:border-white/35"
+                          }`}
+                        >
+                          <p className="text-lg font-semibold text-white">{flagLabel(article.country)} {article.source}</p>
+                          <p className="mt-1 text-sm text-[#c2d3f5]">{languageLabel(article.language)}</p>
+                          <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#dbe6ff]">{article.title}</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Risk Level</p>
-                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.risk_level}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Regional Coverage</p>
-                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.coverage}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Confidence</p>
-                    <p className="mt-2 font-semibold text-white">{workspace.editorial_intelligence.confidence_score}%</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4 sm:col-span-2">
-                    <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Editorial Reason</p>
-                    <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{workspace.editorial_intelligence.reason}</p>
-                    <div className="mt-4 flex flex-wrap gap-3 text-sm text-[#d6e3ff]">
-                      <span className="inline-flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-emerald-300" />{workspace.source_count} sources</span>
-                      <span className="inline-flex items-center gap-2"><Sparkles className="h-4 w-4 text-[#f5c518]" />{workspace.source_languages.join(", ") || "Unknown languages"}</span>
-                    </div>
-                  </div>
+
+                  {selectedArticle ? <SourceArticleDetail article={selectedArticle} /> : null}
                 </CardContent>
               </Card>
             </div>
           </div>
 
           <NextStepPanel
-            message={
-              !hasDraft
-                ? "Generate a clearly marked demo Serbian draft to preview the future unified editorial story from these verified sources."
-                : effectiveStatus === "approved"
-                ? "Draft is approved. Continue to publishing to preview the package before any live integration is used."
-                : "Review the demo draft, refine it if needed, and approve it when the editorial version is ready for publishing review."
-            }
-            ctaLabel={nextAction.label}
-            ctaTo={nextAction.to}
-            onAction={nextAction.onAction}
-            disabled={nextAction.disabled}
+            message="Review the editorial draft package and continue to preview the exact WordPress draft payload."
+            ctaLabel="Continue to Publishing Preview"
+            onAction={continueToPublishing}
           />
         </>
       ) : null}
@@ -432,62 +363,44 @@ export function ReviewPage(): JSX.Element {
   );
 }
 
-type SourceArticleDetailProps = {
-  article: SourceArticle;
-  multipleSources: boolean;
-};
-
-function SourceArticleDetail({ article, multipleSources }: SourceArticleDetailProps): JSX.Element {
+function DraftField({ label, value, prominent = false }: { label: string; value: string; prominent?: boolean }): JSX.Element {
   return (
-    <div className="space-y-4 rounded-2xl border border-white/20 bg-[#08245a] p-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="muted">{flagLabel(article.country)} {article.source}</Badge>
-        <Badge variant="muted">{languageLabel(article.language)}</Badge>
-        {multipleSources ? <Badge variant="warning">Merged Story Coverage</Badge> : null}
-      </div>
-
-      <SourceArticleImage src={article.featured_image} title={article.title} />
-
-      <div>
-        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Headline</p>
-        <h4 className="mt-2 text-2xl font-semibold text-white">{article.title}</h4>
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Excerpt</p>
-        <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{article.excerpt || "No excerpt available."}</p>
-      </div>
-
-      <div>
-        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Content</p>
-        <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{article.content ?? "Content unavailable."}</p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {article.categories.map((category) => (
-          <Badge key={category} variant="default">
-            {category}
-          </Badge>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-[#c2d3f5]">Published {formatDate(article.published_at)}</p>
-        <a href={article.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
-          Open Original Article
-          <ExternalLink className="h-4 w-4" />
-        </a>
-      </div>
+    <div className="rounded-2xl border border-white/20 bg-[#0a285f] p-5">
+      <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">{label}</p>
+      <p className={`mt-3 whitespace-pre-line break-words leading-7 text-[#eef4ff] ${prominent ? "text-base" : "text-sm"}`}>{value || PREPARED_DURING_PROCESSING}</p>
     </div>
   );
 }
 
-type SourceArticleImageProps = {
-  src: string | null;
-  title: string;
-};
+function SourceArticleDetail({ article }: { article: SourceArticle }): JSX.Element {
+  return (
+    <div className="space-y-4 rounded-2xl border border-white/20 bg-[#08245a] p-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <Badge variant="muted">{flagLabel(article.country)} {article.source}</Badge>
+        <Badge variant="muted">Original Language: {languageLabel(article.language)}</Badge>
+      </div>
 
-function SourceArticleImage({ src, title }: SourceArticleImageProps): JSX.Element {
+      <SourceImage src={article.featured_image} title={article.title} />
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Headline</p>
+        <h4 className="mt-2 text-xl font-semibold text-white">{article.title || PREPARED_DURING_PROCESSING}</h4>
+      </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-[0.15em] text-[#b7c9ee]">Original Excerpt</p>
+        <p className="mt-2 text-sm leading-7 text-[#dbe6ff]">{article.excerpt || "Original excerpt is unavailable."}</p>
+      </div>
+
+      <a href={article.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-full border border-[#f5c518] px-4 py-2 text-sm font-semibold text-[#f5c518] transition-colors hover:bg-[#f5c518] hover:text-[#07173d]">
+        Open Original Article
+        <ExternalLink className="h-4 w-4" />
+      </a>
+    </div>
+  );
+}
+
+function FeaturedImagePreview({ src }: { src: string | null }): JSX.Element {
   const [hasFailed, setHasFailed] = useState(false);
 
   useEffect(() => {
@@ -496,21 +409,33 @@ function SourceArticleImage({ src, title }: SourceArticleImageProps): JSX.Elemen
 
   if (!src || hasFailed) {
     return (
-      <div className="flex min-h-36 items-center justify-center rounded-2xl border border-white/20 bg-[#0a285f] px-5 py-8 text-center">
+      <div className="flex min-h-64 items-center justify-center border-y border-white/20 bg-[#0a285f] px-5 py-10 text-center">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#f5c518]">Hype World News</p>
-          <p className="mt-2 text-sm text-[#dbe6ff]">Original source image unavailable.</p>
+          <ImageIcon className="mx-auto h-8 w-8 text-[#f5c518]" />
+          <p className="mt-3 font-semibold text-white">Featured image</p>
+          <p className="mt-2 text-sm text-[#c2d3f5]">{PREPARED_DURING_PROCESSING}</p>
         </div>
       </div>
     );
   }
 
-  return (
-    <img
-      src={src}
-      alt={title}
-      className="h-56 w-full rounded-2xl object-cover"
-      onError={() => setHasFailed(true)}
-    />
-  );
+  return <img src={src} alt="" className="max-h-[420px] w-full object-cover" onError={() => setHasFailed(true)} />;
+}
+
+function SourceImage({ src, title }: { src: string | null; title: string }): JSX.Element {
+  const [hasFailed, setHasFailed] = useState(false);
+
+  useEffect(() => {
+    setHasFailed(false);
+  }, [src]);
+
+  if (!src || hasFailed) {
+    return (
+      <div className="flex min-h-32 items-center justify-center rounded-2xl border border-white/20 bg-[#0a285f] px-5 py-8 text-center">
+        <p className="text-sm text-[#dbe6ff]">Original source image unavailable.</p>
+      </div>
+    );
+  }
+
+  return <img src={src} alt={title} className="h-48 w-full rounded-2xl object-cover" onError={() => setHasFailed(true)} />;
 }

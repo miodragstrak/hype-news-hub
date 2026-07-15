@@ -32,17 +32,17 @@ export function AppShell(): JSX.Element {
     <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_20%_-10%,rgba(32,68,137,0.5)_0%,transparent_45%),radial-gradient(circle_at_90%_0%,rgba(245,197,24,0.09)_0%,transparent_28%),#07173d] text-[#f4f8ff]">
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.03)_0%,rgba(255,255,255,0)_32%),linear-gradient(to_right,rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100%_100%,28px_28px,28px_28px]" />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 pb-10 pt-5 sm:px-8 lg:px-10">
-        <header className="rounded-[28px] border border-white/20 bg-[#0b2a67]/85 px-5 py-5 shadow-[0_24px_52px_-34px_rgba(0,0,0,0.75)] backdrop-blur md:px-7 md:py-6">
-          <div className="space-y-5">
-            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <header className="sticky top-4 z-30 rounded-[24px] border border-white/20 bg-[#0b2a67]/92 px-5 py-5 shadow-[0_24px_52px_-34px_rgba(0,0,0,0.75)] backdrop-blur md:px-7 md:py-6">
+          <div className="space-y-4">
+            <div className="flex flex-col items-start gap-3 xl:flex-row xl:items-end xl:justify-between">
               <div className="flex items-center gap-4">
-                <img src="/hype-logo.png" alt="Hype logo" className="h-14 w-auto object-contain sm:h-16" />
+                <img src="/hype-logo.png" alt="Hype logo" className="h-16 w-auto object-contain sm:h-20" />
                 <div className="space-y-1">
-                  <h1 className="text-2xl font-extrabold tracking-[0.02em] text-white sm:text-3xl">HYPE WORLD NEWS</h1>
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#d6e3ff]">AI Editorial Control Center</p>
+                  <h1 className="text-3xl font-extrabold text-white sm:text-4xl">HYPE WORLD NEWS</h1>
+                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#d6e3ff]">AI Editorial Control Center</p>
                 </div>
               </div>
-              <p className="max-w-xl text-sm leading-6 text-[#c2d3f5]">AI-powered workflow for collecting, merging, prioritizing and publishing news.</p>
+              <p className="max-w-xl text-sm leading-6 text-[#c2d3f5]">AI shows what it collected, what it processed, and what editors review next.</p>
             </div>
 
             <motion.nav initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="overflow-x-auto pb-1">

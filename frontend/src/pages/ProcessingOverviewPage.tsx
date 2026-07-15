@@ -1,10 +1,8 @@
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
 import { Fragment } from "react";
-import { Link } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
-import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
 
@@ -17,11 +15,11 @@ export function ProcessingOverviewPage(): JSX.Element {
   const readyForReview = Math.max(1, Math.floor(uniqueStories * 0.68));
 
   const processingStages = [
-    { label: "Collected Articles", message: "AI collected articles" },
+    { label: "Collected", message: "AI collected articles" },
     { label: "Normalized", message: "AI normalized content" },
     { label: "Stories Created", message: "AI groups related stories..." },
     { label: "Duplicates Merged", message: "AI merges duplicate coverage..." },
-    { label: "Editorially Scored", message: "AI evaluates editorial importance..." },
+    { label: "Editorially Ranked", message: "AI evaluates editorial importance..." },
     { label: "Ready for Review", message: "AI prepares the editorial queue..." }
   ];
 
@@ -40,14 +38,14 @@ export function ProcessingOverviewPage(): JSX.Element {
   return (
     <section className="space-y-7">
       <header className="space-y-2">
-        <h2 className="text-4xl font-bold tracking-tight text-white">Process Editorial Signals</h2>
-        <p className="text-[#c2d3f5]">Normalize articles, merge duplicates, and rank stories for editorial review.</p>
+        <h2 className="text-4xl font-bold tracking-tight text-white">Process Editorial Pipeline</h2>
+        <p className="text-[#c2d3f5]">AI normalizes content, merges duplicate coverage, and ranks stories for review.</p>
         <p className="text-sm text-[#b5c8ed]">Actions can be reviewed before publishing.</p>
       </header>
 
       <Card className="border-white/25 bg-[#0a285f]">
         <CardContent className="space-y-4 p-7">
-          <div className="flex gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-[repeat(11,max-content)] lg:items-center lg:overflow-visible">
+          <div className="flex gap-3 overflow-x-auto pb-2 xl:grid xl:grid-cols-[repeat(11,minmax(0,1fr))] xl:items-center xl:overflow-visible">
             {processingStages.map((stage, index) => {
               const done = index < completedStages;
               const active = activeStageIndex === index;
@@ -57,7 +55,7 @@ export function ProcessingOverviewPage(): JSX.Element {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.06, duration: 0.35 }}
-                    className={`inline-flex min-w-[190px] items-center gap-2 rounded-2xl border px-4 py-3 ${
+                    className={`inline-flex min-w-[176px] items-center gap-2 rounded-2xl border px-4 py-3 xl:min-w-0 ${
                       done
                         ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-50"
                         : active
@@ -75,7 +73,7 @@ export function ProcessingOverviewPage(): JSX.Element {
                     <p className="text-sm font-semibold leading-snug">{stage.label}</p>
                   </motion.div>
                   {index < processingStages.length - 1 ? (
-                    <ArrowRight className="hidden h-5 w-5 shrink-0 self-center text-[#f5c518] lg:block" />
+                    <ArrowRight className="hidden h-5 w-5 shrink-0 self-center justify-self-center text-[#f5c518] xl:block" />
                   ) : null}
                 </Fragment>
               );
@@ -87,7 +85,7 @@ export function ProcessingOverviewPage(): JSX.Element {
               {isProcessingComplete ? "Completed" : `Step ${activeStageIndex + 1} of ${processingStages.length}`}
             </p>
             <p className="mt-2 text-sm font-semibold text-white">
-              {isProcessingComplete ? "AI prepared stories for review." : processingStages[activeStageIndex].message}
+              {isProcessingComplete ? "Processing completed successfully." : processingStages[activeStageIndex].message}
             </p>
           </div>
         </CardContent>
@@ -109,16 +107,13 @@ export function ProcessingOverviewPage(): JSX.Element {
       {isProcessingComplete ? (
         <Card className="border-emerald-400/35 bg-emerald-500/10">
           <CardContent className="space-y-3 p-6">
-            <h3 className="text-2xl font-bold text-emerald-100">Processing Complete</h3>
+            <h3 className="text-2xl font-bold text-emerald-100">Processing completed successfully.</h3>
             <ul className="space-y-1 text-sm text-emerald-50">
               <li>{collected} articles collected</li>
               <li>{duplicatesMerged} duplicates merged</li>
               <li>{uniqueStories} unique stories</li>
               <li>{readyForReview} ready for review</li>
             </ul>
-            <Button size="lg" asChild>
-              <Link to="/review">Review Editorial Stories</Link>
-            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -127,13 +122,15 @@ export function ProcessingOverviewPage(): JSX.Element {
         </Card>
       )}
 
-      {!isProcessingComplete ? (
-        <NextStepPanel
-          message="Collection is required before processing can complete. Go back and run Start Collection."
-          ctaLabel="Return to Collect"
-          ctaTo="/"
-        />
-      ) : null}
+      <NextStepPanel
+        message={
+          isProcessingComplete
+            ? "Processing is complete. Review the ranked editorial stories and confirm the next publishing candidate."
+            : "Collection is required before processing can complete. Go back and run Start Collection."
+        }
+        ctaLabel={isProcessingComplete ? "Review Stories" : "Return to Collect"}
+        ctaTo={isProcessingComplete ? "/review" : "/"}
+      />
     </section>
   );
 }

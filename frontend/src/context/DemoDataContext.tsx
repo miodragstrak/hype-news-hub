@@ -3,6 +3,30 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { collectLatestNews, getDemoCollectArticlesResponse, getDemoEditorialQueueResponse, getDemoStoriesResponse, getDiscoverySources, getEditorialQueue, getStories } from "../services/newsService";
 import type { CollectArticlesResponse, DiscoveryResult, EditorialStory, NormalizedArticle, StorySummary } from "../types/news";
 
+export type EditorialDraftSource = {
+  id: string;
+  countryFlag: string;
+  sourceName: string;
+  originalLanguage: string;
+  originalHeadline: string;
+  url: string;
+};
+
+export type EditorialDraftPackage = {
+  storyId: string;
+  headline: string;
+  slug: string;
+  category: string;
+  featuredImage: string | null;
+  excerpt: string;
+  mainContent: string;
+  categories: string[];
+  tags: string[];
+  seoTitle: string;
+  seoDescription: string;
+  sourcesUsed: EditorialDraftSource[];
+};
+
 type DemoDataContextValue = {
   sources: DiscoveryResult[];
   sourceError: string | null;
@@ -15,6 +39,8 @@ type DemoDataContextValue = {
   stories: StorySummary[];
   editorialStories: EditorialStory[];
   sourceArticleCounts: Record<string, number>;
+  selectedDraftPackage: EditorialDraftPackage | null;
+  setSelectedDraftPackage: (draftPackage: EditorialDraftPackage | null) => void;
   collectNow: () => Promise<void>;
 };
 
@@ -40,6 +66,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
   const [lastCollectedAt, setLastCollectedAt] = useState<string | null>(() => new Date().toISOString());
   const [stories, setStories] = useState<StorySummary[]>(() => getDemoStoriesResponse().stories);
   const [editorialStories, setEditorialStories] = useState<EditorialStory[]>(() => getDemoEditorialQueueResponse().stories);
+  const [selectedDraftPackage, setSelectedDraftPackage] = useState<EditorialDraftPackage | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -134,6 +161,8 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
       stories,
       editorialStories,
       sourceArticleCounts,
+      selectedDraftPackage,
+      setSelectedDraftPackage,
       collectNow: async () => {
         setCollectError(null);
         setIsCollecting(true);
@@ -164,7 +193,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
         }
       }
     }),
-    [collectionResult, collectError, editorialStories, isCollecting, isLoadingSources, lastCollectedAt, sourceArticleCounts, sourceError, sources, stories]
+    [collectionResult, collectError, editorialStories, isCollecting, isLoadingSources, lastCollectedAt, selectedDraftPackage, sourceArticleCounts, sourceError, sources, stories]
   );
 
   return <DemoDataContext.Provider value={value}>{children}</DemoDataContext.Provider>;
