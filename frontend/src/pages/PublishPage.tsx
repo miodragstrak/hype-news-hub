@@ -68,6 +68,24 @@ export function PublishPage(): JSX.Element {
         </Card>
       </motion.div>
 
+      <Card className="border-[#f5c518]/45 bg-[#12357a]">
+        <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-2xl font-bold text-white">Preview on Hype Portal</h3>
+            <p className="mt-2 text-sm leading-6 text-[#dbe6ff]">See how readers will experience this article on the Hype website.</p>
+          </div>
+          {selectedDraftPackage ? (
+            <Button asChild size="lg">
+              <Link to={`/portal-preview/${encodeURIComponent(selectedDraftPackage.storyId)}`}>Preview on Hype Portal</Link>
+            </Button>
+          ) : (
+            <Button size="lg" type="button" disabled>
+              Preview on Hype Portal
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
       {!selectedDraftPackage ? (
         <Card className="border-amber-400/35 bg-amber-400/10">
           <CardContent className="space-y-4 p-6">

@@ -7,28 +7,10 @@ import { NextStepPanel } from "../components/NextStepPanel";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { useDemoData, type EditorialDraftPackage } from "../context/DemoDataContext";
+import { useDemoData } from "../context/DemoDataContext";
+import { buildDraftPackage, flagLabel, languageLabel, PREPARED_DURING_PROCESSING } from "../lib/editorialDraft";
 import { getEditorialStoryWorkspace } from "../services/newsService";
 import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
-
-const PREPARED_DURING_PROCESSING = "To be prepared during editorial processing";
-const FUTURE_ARTICLE_BODY = "The final Serbian editorial article will appear here after language processing and editorial preparation.";
-
-const languageLabels: Record<string, string> = {
-  sr: "Serbian",
-  hr: "Croatian",
-  bs: "Bosnian",
-  sl: "Slovenian",
-  mk: "Macedonian"
-};
-
-const countryFlags: Record<string, string> = {
-  RS: "🇷🇸",
-  HR: "🇭🇷",
-  BA: "🇧🇦",
-  SI: "🇸🇮",
-  MK: "🇲🇰"
-};
 
 const timeline = [
   { label: "Articles Collected", state: "complete" },
@@ -39,63 +21,6 @@ const timeline = [
   { label: "Human Approval", state: "future" },
   { label: "WordPress Draft", state: "future" }
 ] as const;
-
-function languageLabel(language: string | null): string {
-  if (!language) {
-    return "Unknown";
-  }
-
-  return languageLabels[language] ?? language.toUpperCase();
-}
-
-function flagLabel(country: string): string {
-  return countryFlags[country] ?? "🌐";
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 72);
-}
-
-function uniqueValues(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function buildDraftPackage(workspace: EditorialStoryWorkspace): EditorialDraftPackage {
-  const primaryArticle = workspace.source_articles[0];
-  const categories = uniqueValues(workspace.source_articles.flatMap((article) => article.categories));
-  const headline = workspace.headline || primaryArticle?.title || PREPARED_DURING_PROCESSING;
-  const excerpt = primaryArticle?.excerpt || PREPARED_DURING_PROCESSING;
-  const category = categories[0] ?? PREPARED_DURING_PROCESSING;
-  const tags = uniqueValues([category, workspace.editorial_intelligence.coverage, "Hype World News", "Editorial Draft"]).filter(
-    (tag) => tag !== PREPARED_DURING_PROCESSING
-  );
-
-  return {
-    storyId: workspace.story_id,
-    headline,
-    slug: headline === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : slugify(headline),
-    category,
-    featuredImage: primaryArticle?.featured_image ?? null,
-    excerpt,
-    mainContent: FUTURE_ARTICLE_BODY,
-    categories: categories.length > 0 ? categories : [PREPARED_DURING_PROCESSING],
-    tags: tags.length > 0 ? tags : [PREPARED_DURING_PROCESSING],
-    seoTitle: headline === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : `${headline} | Hype World News`,
-    seoDescription: excerpt === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : excerpt.slice(0, 156),
-    sourcesUsed: workspace.source_articles.map((article) => ({
-      id: article.external_id,
-      countryFlag: flagLabel(article.country),
-      sourceName: article.source,
-      originalLanguage: languageLabel(article.language),
-      originalHeadline: article.title || PREPARED_DURING_PROCESSING,
-      url: article.url
-    }))
-  };
-}
 
 export function ReviewPage(): JSX.Element {
   const { storyId: routeStoryId } = useParams();
