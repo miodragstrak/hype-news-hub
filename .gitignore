@@ -44,3 +44,7 @@ backend/__pycache__
 
 # Miscellaneous
 komentari/
+
+# Local PostgreSQL backups and dumps
+backups/
+*.dump

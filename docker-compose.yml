@@ -6,6 +6,15 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_CORS_ORIGINS: http://localhost:3000,http://localhost:5173,https://hype-news-hub.vercel.app
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-hype_news_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-hype_news_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-prefer}
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
     healthcheck:
@@ -16,6 +25,84 @@ services:
       retries: 3
     networks:
       - hype-news-hub
+      - database
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hype_news_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-hype_news_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+      TZ: UTC
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    networks:
+      - database
+
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.database
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-hype_news_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-hype_news_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-prefer}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - database
+
+  postgres-test:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: hype_news_hub_test
+      POSTGRES_USER: hype_news_hub_test
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-}
+      TZ: UTC
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    networks:
+      - database-test
+
+  database-tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.database
+    environment:
+      RUN_POSTGRES_TESTS: "1"
+      POSTGRES_HOST: postgres-test
+      POSTGRES_DB: hype_news_hub_test
+      POSTGRES_USER: hype_news_hub_test
+      POSTGRES_PASSWORD: ${POSTGRES_TEST_PASSWORD:-}
+      POSTGRES_SSLMODE: disable
+    volumes:
+      - ./backend/tests:/app/tests:ro
+      - ./backend/.env.example:/app/.env.example:ro
+    command: ["python", "-B", "-m", "unittest", "discover", "-s", "tests", "-v"]
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+    networks:
+      - database-test
 
   frontend:
     build:
@@ -43,3 +130,12 @@ services:
 networks:
   hype-news-hub:
     driver: bridge
+  database:
+    driver: bridge
+    internal: true
+  database-test:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres-data:
