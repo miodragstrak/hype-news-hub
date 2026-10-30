@@ -62,6 +62,48 @@ No deployment is part of these commands.
 - `backend/` FastAPI + SQLAlchemy + Alembic
 - `frontend/` React + Vite + TypeScript + TailwindCSS
 
+## Backend CORS for Vercel Preview
+
+`BACKEND_CORS_ORIGINS` is a comma-separated list of exact browser origins.
+Its default includes `http://localhost:5173`, `http://localhost:3000`, and
+`https://hype-news-hub.vercel.app`. An environment override replaces that list,
+so retain those entries when adding another exact origin. Wildcard origins
+(`*`) are rejected.
+
+`BACKEND_CORS_ORIGIN_REGEX` additionally allows this project's Vercel branch
+Preview URLs and nine-character commit Preview URLs in the specified team:
+
+```text
+^https://hype-news-hub-(?:git-[a-z0-9-]+|[a-z0-9]{9})-miodrag-straks-projects\.vercel\.app$
+```
+
+This pattern is the backend default and is also shown in `backend/.env.example`.
+It matches the reported Sprint 14A Preview origin. It requires HTTPS, the exact
+project prefix, and the exact team suffix; unrelated projects, other teams,
+lookalike domain suffixes, and `null` origins are not allowed. Matching is against
+the entire origin. An empty regex environment value disables Preview matching
+without disabling the exact origin list. Invalid regex syntax fails startup.
+
+For the Render backend, the intended environment values are:
+
+```text
+BACKEND_CORS_ORIGINS=http://localhost:5173,http://localhost:3000,https://hype-news-hub.vercel.app
+BACKEND_CORS_ORIGIN_REGEX=^https://hype-news-hub-(?:git-[a-z0-9-]+|[a-z0-9]{9})-miodrag-straks-projects\.vercel\.app$
+```
+
+Use literal single backslashes in the Render environment value, without shell
+quotes. The backend must run the updated code for the regex setting to take
+effect. Changing a frontend `VITE_*` variable cannot change backend CORS.
+The live frontend API URL remains `https://hype-news-hub.onrender.com`.
+
+Allowed requests receive their exact origin in `Access-Control-Allow-Origin`
+and `Vary: Origin`. Disallowed preflights return 400 with no allow-origin header;
+ordinary requests from disallowed origins have no allow-origin header, leaving
+the browser to block access to the response. CORS does not authenticate requests.
+Credentials, supported HTTP methods/headers, API routes, and response bodies are
+unchanged. The regression suite tests actual GET and OPTIONS middleware behavior
+without contacting live sources.
+
 ## Quick start
 
 ### Backend

@@ -5,7 +5,7 @@ services:
     container_name: hype-news-hub-backend
     restart: unless-stopped
     environment:
-      BACKEND_CORS_ORIGINS: http://localhost:3000,http://localhost:5173
+      BACKEND_CORS_ORIGINS: http://localhost:3000,http://localhost:5173,https://hype-news-hub.vercel.app
     ports:
       - "8000:8000"
     healthcheck:
