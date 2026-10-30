@@ -2,6 +2,16 @@
 
 Internal application for aggregating and processing entertainment news.
 
+## Sprint 15A: PostgreSQL foundation
+
+The initial schema and local/private PostgreSQL tooling are implemented.
+Existing API endpoints still use memory; they do not yet persist collections or
+read database records. No AI, approval, or WordPress functionality is added.
+
+See [PostgreSQL setup, schema, migrations, tests, backup and recovery](docs/postgresql.md)
+for Ubuntu development and the dedicated self-hosted deployment design.
+Render/Vercel configuration and the existing backend Dockerfile are unchanged.
+
 ## Sprint 14A: live data, explicit demo mode, and regression checks
 
 Live mode is the default. Set `VITE_API_URL` (or the legacy
@@ -129,9 +139,16 @@ npm run dev
 ## Docker local startup
 
 ```bash
+cp .env.example .env
+# Generate the two private passwords as described in docs/postgresql.md.
+docker compose up -d --wait postgres
+docker compose --profile tools run --rm --build migrate
 docker compose up --build
 docker compose down
 ```
+
+The dedicated PostgreSQL service has no published port. Its named volume is
+preserved by `docker compose down`; do not add `--volumes` when retaining data.
 
 Frontend:
 http://localhost:3000
