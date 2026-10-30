@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     )
     discovery_timeout_seconds: float = 8.0
     story_merge_threshold: int = 72
+    story_match_max_gap_hours: float = Field(default=48, gt=0, allow_inf_nan=False)
+    news_storage_backend: Literal["memory", "postgres"] = "memory"
 
     postgres_host: str = "localhost"
     postgres_port: int = Field(default=5432, ge=1, le=65535)

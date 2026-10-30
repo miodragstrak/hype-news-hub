@@ -2,11 +2,25 @@
 
 Internal application for aggregating and processing entertainment news.
 
+## Sprint 15B: persistent collection
+
+`NEWS_STORAGE_BACKEND=memory` remains the default for Render and development
+without PostgreSQL. Explicit `postgres` mode persists sources, articles, stories
+and collection history, with stable IDs, source transactions and no memory fallback.
+It requires migrations and a separate restricted runtime role before use.
+See [PostgreSQL operations and rollout](docs/postgresql.md) for provisioning,
+verification, failure behavior and the remaining self-hosted activation work.
+
+Sprint 15B.1 adds a configurable publication-time gate for new story memberships,
+complete retained collection snapshots, lossless versioned URL identities and
+safe normalized legacy-data migration. Its PostgreSQL tests include independent
+collector processes and lock recovery after termination.
+
 ## Sprint 15A: PostgreSQL foundation
 
 The initial schema and local/private PostgreSQL tooling are implemented.
-Existing API endpoints still use memory; they do not yet persist collections or
-read database records. No AI, approval, or WordPress functionality is added.
+Sprint 15A originally left API endpoints in memory; Sprint 15B adds explicit
+PostgreSQL mode. No real AI, approval, or WordPress publishing functionality is added.
 
 See [PostgreSQL setup, schema, migrations, tests, backup and recovery](docs/postgresql.md)
 for Ubuntu development and the dedicated self-hosted deployment design.

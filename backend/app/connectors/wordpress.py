@@ -92,6 +92,7 @@ class WordPressConnector(BaseConnector):
     def _normalize_post(self, post: dict) -> dict[str, object | None | list[str]]:
         title_data = post.get("title") if isinstance(post.get("title"), dict) else {}
         excerpt_data = post.get("excerpt") if isinstance(post.get("excerpt"), dict) else {}
+        content_data = post.get("content") if isinstance(post.get("content"), dict) else {}
 
         return {
             "external_id": post.get("id"),
@@ -102,6 +103,8 @@ class WordPressConnector(BaseConnector):
             "categories": self._extract_categories(post),
             "excerpt": self._strip_html(excerpt_data.get("rendered") if isinstance(excerpt_data, dict) else None),
             "language": self._extract_language(post),
+            "content": self._strip_html(content_data.get("rendered")),
+            "raw": post,
         }
 
     async def test_connection(self) -> dict[str, object | None]:

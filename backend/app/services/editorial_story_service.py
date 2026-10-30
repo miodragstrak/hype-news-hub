@@ -90,16 +90,16 @@ def _workspace_from_story(story: Story) -> EditorialStoryWorkspace:
     )
 
 
-def get_editorial_story_workspace(story_id: str) -> EditorialStoryWorkspace | None:
-    story = get_story_by_id(story_id)
+def get_editorial_story_workspace(story_id: str, repository=None) -> EditorialStoryWorkspace | None:
+    story = get_story_by_id(story_id, repository)
     if story is None:
         return None
 
     return _workspace_from_story(story)
 
 
-def generate_demo_serbian_draft(story_id: str) -> EditorialStoryWorkspace | None:
-    story = get_story_by_id(story_id)
+def generate_demo_serbian_draft(story_id: str, repository=None) -> EditorialStoryWorkspace | None:
+    story = get_story_by_id(story_id, repository)
     if story is None:
         return None
 

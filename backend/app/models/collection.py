@@ -16,6 +16,7 @@ class CollectionRun(UUIDPrimaryKey, Base):
         CheckConstraint("limit_per_source BETWEEN 1 AND 50", name="valid_limit"),
         CheckConstraint("sources_processed >= 0 AND sources_failed >= 0 AND sources_failed <= sources_processed", name="valid_source_counts"),
         CheckConstraint("articles_total >= 0 AND stories_total >= 0 AND story_candidates_total >= 0", name="nonnegative_counts"),
+        CheckConstraint("articles_new >= 0 AND articles_new <= articles_total", name="valid_new_count"),
         CheckConstraint("finished_at IS NULL OR finished_at >= started_at", name="valid_finish_time"),
         CheckConstraint("(status = 'running' AND finished_at IS NULL) OR (status <> 'running' AND finished_at IS NOT NULL)", name="status_finish_time"),
     )
@@ -27,6 +28,7 @@ class CollectionRun(UUIDPrimaryKey, Base):
     sources_processed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     sources_failed: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     articles_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    articles_new: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     stories_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     story_candidates_total: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     error: Mapped[str | None] = mapped_column(Text)

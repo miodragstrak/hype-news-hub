@@ -17,13 +17,13 @@ export function PublishPage(): JSX.Element {
 
   const collected = collectionResult?.articles_total ?? 0;
   const sourcesProcessed = collectionResult?.sources_processed ?? 0;
-  const storiesCreated = collectionResult?.stories_total ?? 0;
+  const availableStories = collectionResult?.stories_total ?? 0;
   const previewStatus = selectedDraftPackage ? "Editorial Package Preview" : "No Editorial Package Selected";
 
   const summary = [
     { label: "Sources processed", value: sourcesProcessed },
     { label: "Articles collected", value: collected },
-    { label: "Stories created", value: storiesCreated },
+    { label: "Available stories", value: availableStories },
     { label: "Publishing destination", value: "Central Hype WordPress Portal" },
     { label: "CMS", value: "WordPress" },
     { label: "Status", value: previewStatus }

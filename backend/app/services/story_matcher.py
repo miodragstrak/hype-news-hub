@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import re
 from difflib import SequenceMatcher
+from datetime import datetime
 
 from app.schemas.article import NormalizedArticle
 from app.services.timestamps import parse_published_at as _parse_published_at
 
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+
+
+def publication_times_eligible(left: datetime | None, right: datetime | None, max_gap_hours: float) -> bool:
+    """Hard eligibility gate for new persistent memberships, anchored to primary."""
+    if left is None or right is None or left.utcoffset() is None or right.utcoffset() is None:
+        return False
+    return abs((left - right).total_seconds()) <= max_gap_hours * 3600
 
 
 def normalize_title(title: str) -> str:

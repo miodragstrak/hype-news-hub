@@ -71,7 +71,7 @@ export function CollectionProgressPage(): JSX.Element {
               <li>Sources processed: {collectionResult.sources_processed}</li>
               <li>Sources failed: {collectionResult.sources_failed}</li>
               <li>Articles collected: {collectionResult.articles_total}</li>
-              <li>Stories created: {collectionResult.stories_total}</li>
+              <li>Available stories: {collectionResult.stories_total}</li>
             </ul>
           ) : null}
           {hasUsableResult ? <p className="inline-flex items-center gap-2 text-sm"><CheckCircle2 className="h-4 w-4" />{isDemoMode ? "Sample results available." : "Collection results available."}</p> : null}

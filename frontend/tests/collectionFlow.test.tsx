@@ -169,7 +169,7 @@ describe("collection state and rendered outcomes", () => {
     await screen.findByText("Editorial queue loaded: 1 stories.");
     const metric = screen.getByText("Articles Grouped into Existing Stories").parentElement!;
     expect(within(metric).getByText("1")).toBeTruthy();
-    const storyMetric = screen.getByText("Stories Created").parentElement!;
+    const storyMetric = screen.getByText("Available Stories").parentElement!;
     expect(within(storyMetric).getByText("1")).toBeTruthy();
     vi.mocked(news.getEditorialQueue).mockRejectedValue(new Error("Queue refresh failed"));
     start();
@@ -179,12 +179,66 @@ describe("collection state and rendered outcomes", () => {
   });
 
   it("does not invent grouped articles or stories for an empty successful result", async () => {
+    vi.mocked(news.getStories).mockResolvedValue({ stories_total: 1, stories: [story] });
     vi.mocked(news.collectLatestNews).mockResolvedValue({ ...collection, articles: [], articles_total: 0, stories: [], stories_total: 0, story_candidates_total: 0, source_results: collection.source_results?.map((s) => ({ ...s, articles_total: 0 })) });
     mount("/", true);
+    await waitFor(() => expect(state().stories).toEqual([story.id]));
     start();
     await screen.findByText("Collection completed successfully.");
     expect(within(screen.getByText("Articles Grouped into Existing Stories").parentElement!).getByText("0")).toBeTruthy();
     expect(state().stories).toEqual([]);
+  });
+
+  it("keeps the retained PostgreSQL snapshot after a successful empty collection", async () => {
+    vi.mocked(news.getStories).mockResolvedValue({ stories_total: 1, stories: [story] });
+    vi.mocked(news.getEditorialQueue).mockResolvedValue({ stories_total: 1, stories: [editorial] });
+    vi.mocked(news.collectLatestNews).mockResolvedValue({
+      ...collection, articles_total: 0, articles: [], story_candidates_total: 0,
+      source_results: collection.source_results?.map((outcome) => ({ ...outcome, articles_total: 0 })),
+      stories_total: 1, stories: [story],
+    });
+    mount("/", true);
+    await waitFor(() => expect(state().stories).toEqual([story.id]));
+    start();
+    await screen.findByText("Collection completed successfully.");
+    await waitFor(() => expect(state().queue).toEqual([story.id]));
+    expect(state().result).toBe(0);
+    expect(state().stories).toEqual([story.id]);
+    expect(within(screen.getByText("Available Stories").parentElement!).getByText("1")).toBeTruthy();
+    expect(within(screen.getByText("Articles Collected").parentElement!).getByText("0")).toBeTruthy();
+    expect(news.getStories).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps previously persisted stories alongside new coverage after partial failure", async () => {
+    const retained = { ...story, id: "retained-story", headline: "Previously persisted coverage" };
+    vi.mocked(news.getStories).mockResolvedValue({ stories_total: 1, stories: [retained] });
+    vi.mocked(news.getEditorialQueue).mockResolvedValue({ stories_total: 2, stories: [editorial, { ...editorial, ...retained }] });
+    vi.mocked(news.collectLatestNews).mockResolvedValue({
+      ...collection, sources_failed: 1, articles_total: 1, articles: collection.articles.slice(1),
+      stories_total: 2, stories: [story, retained],
+      source_results: [allFailed.source_results![0], collection.source_results![1]],
+    });
+    mount();
+    await waitFor(() => expect(state().stories).toEqual([retained.id]));
+    start();
+    await screen.findByText("Collection completed with source failures.");
+    await waitFor(() => expect(state().queue).toEqual([story.id, retained.id]));
+    expect(state().stories).toEqual([story.id, retained.id]);
+    expect(state().result).toBe(1);
+  });
+
+  it("does not duplicate or discard retained stories on repeated snapshot responses", async () => {
+    const retained = { ...story, id: "retained-story", headline: "Earlier coverage" };
+    vi.mocked(news.getStories).mockResolvedValue({ stories_total: 1, stories: [retained] });
+    vi.mocked(news.collectLatestNews).mockResolvedValue({ ...collection, stories_total: 2, stories: [story, retained] });
+    mount();
+    await waitFor(() => expect(state().stories).toEqual([retained.id]));
+    start();
+    await screen.findByText("Collection completed successfully.");
+    start();
+    await screen.findByText("Collection completed successfully.");
+    expect(state().stories).toEqual([story.id, retained.id]);
+    expect(news.collectLatestNews).toHaveBeenCalledTimes(2);
   });
 
   it("does not let slow initial requests overwrite a new collection", async () => {
