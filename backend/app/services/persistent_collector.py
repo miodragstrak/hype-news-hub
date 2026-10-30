@@ -5,7 +5,8 @@ import logging
 from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 
 from app.schemas.collector import CollectArticlesResponse, CollectionSourceResult
-from app.services.article_normalizer import normalize_articles
+from app.services.source_collection import normalize_source_batch
+from app.connectors.errors import SourceFetchError
 from app.services.story_service import _story_summary
 from app.services.timestamps import published_sort_key
 
@@ -26,10 +27,10 @@ async def _collect(repository, sources, limit, response_headers):
                 try:
                     connector = source.connector_factory(source.url)
                     fetched = await connector.fetch_latest(limit=limit)
-                    normalized = normalize_articles(fetched, source.url, source.connector, source.name)
+                    normalized = normalize_source_batch(fetched, source.url, source.connector, source.name)
                 except Exception as exc:
                     logger.warning("Source fetch/normalization failed: %s (%s)", source.name, type(exc).__name__)
-                    message = "Unable to collect this source."
+                    message = str(exc) if isinstance(exc, SourceFetchError) else "Unable to collect this source."
                     writer.fail_source(source.url, f"{type(exc).__name__}: {message}")
                     results.append(CollectionSourceResult(name=source.name, url=source.url, status="failed", error=message))
                     continue

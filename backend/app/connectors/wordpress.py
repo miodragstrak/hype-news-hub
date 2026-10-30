@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urljoin, urlparse
-
-import httpx
+from urllib.parse import urljoin
 
 from app.connectors.base import BaseConnector
 from app.core.config import settings
+from app.connectors.errors import SourceFetchError, SourceSecurityError
+from app.connectors.http_client import SourceHTTPClient, https_host
+from app.core.content_safety import plain_text, safe_content_url
 
 
 class WordPressConnector(BaseConnector):
-    def __init__(self, base_url: str, timeout_seconds: float | None = None):
+    def __init__(self, base_url: str, timeout_seconds: float | None = None, *,
+                 embed_relations: tuple[str, ...] | None = None, http_client: SourceHTTPClient | None = None):
         self.base_url = self._normalize_base_url(base_url)
         self.wp_json_endpoint = urljoin(f"{self.base_url}/", "wp-json") if self.base_url else ""
-        self.posts_endpoint = urljoin(f"{self.base_url}/", "wp-json/wp/v2/posts?_embed") if self.base_url else ""
-        self.timeout = httpx.Timeout(timeout_seconds or settings.discovery_timeout_seconds)
+        if embed_relations is not None and (not embed_relations or any(not re.fullmatch(r"[a-z0-9:_-]+", relation) for relation in embed_relations)):
+            raise ValueError("Embedding relations must be explicit WordPress relation names.")
+        embedding = "_embed" if embed_relations is None else "_embed=" + ",".join(embed_relations)
+        self.posts_endpoint = urljoin(f"{self.base_url}/", "wp-json/wp/v2/posts?" + embedding) if self.base_url else ""
+        self.http = http_client or SourceHTTPClient(self.base_url, read_timeout=timeout_seconds or settings.source_http_read_timeout_seconds)
 
     @staticmethod
     def _normalize_base_url(url: str) -> str:
@@ -23,10 +28,30 @@ class WordPressConnector(BaseConnector):
     @staticmethod
     def _is_valid_url(url: str) -> bool:
         try:
-            parsed = urlparse(url)
-            return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
-        except ValueError:
+            https_host(url)
+            return True
+        except SourceSecurityError:
             return False
+
+    @staticmethod
+    def _embedded(post):
+        embedded = post.get("_embedded")
+        if embedded is None:
+            return {}
+        if not isinstance(embedded, dict):
+            raise SourceFetchError("malformed_structure")
+        return embedded
+
+    @staticmethod
+    def _terms(post):
+        terms = WordPressConnector._embedded(post).get("wp:term")
+        if terms is None:
+            return []
+        if not isinstance(terms, list) or any(not isinstance(group, list) or any(
+                not isinstance(term, dict) or (term.get("taxonomy") is not None and not isinstance(term["taxonomy"], str))
+                for term in group) for group in terms):
+            raise SourceFetchError("malformed_structure")
+        return terms
 
     @staticmethod
     def _extract_wordpress_version(wp_json: dict) -> str | None:
@@ -42,18 +67,18 @@ class WordPressConnector(BaseConnector):
 
     @staticmethod
     def _extract_featured_image(post: dict) -> str | None:
-        embedded = post.get("_embedded", {})
-        featured_media = embedded.get("wp:featuredmedia", [])
-        if featured_media and isinstance(featured_media, list):
-            source_url = featured_media[0].get("source_url")
-            if isinstance(source_url, str):
-                return source_url
+        featured_media = WordPressConnector._embedded(post).get("wp:featuredmedia")
+        if featured_media is None:
+            return None
+        if not isinstance(featured_media, list) or any(not isinstance(item, dict) for item in featured_media):
+            raise SourceFetchError("malformed_structure")
+        if featured_media:
+            return safe_content_url(featured_media[0].get("source_url"))
         return None
 
     @staticmethod
     def _extract_categories(post: dict) -> list[str]:
-        embedded = post.get("_embedded", {})
-        terms = embedded.get("wp:term", [])
+        terms = WordPressConnector._terms(post)
 
         categories: list[str] = []
         for term_group in terms:
@@ -71,8 +96,7 @@ class WordPressConnector(BaseConnector):
         if isinstance(post.get("language"), str):
             return post["language"]
 
-        embedded = post.get("_embedded", {})
-        terms = embedded.get("wp:term", [])
+        terms = WordPressConnector._terms(post)
         for term_group in terms:
             if not isinstance(term_group, list):
                 continue
@@ -86,8 +110,9 @@ class WordPressConnector(BaseConnector):
     def _strip_html(value: str | None) -> str | None:
         if value is None:
             return None
-        cleaned = re.sub(r"<[^>]*>", "", value)
-        return cleaned.strip()
+        if not isinstance(value, str):
+            raise SourceFetchError("malformed_structure")
+        return plain_text(value)
 
     def _normalize_post(self, post: dict) -> dict[str, object | None | list[str]]:
         title_data = post.get("title") if isinstance(post.get("title"), dict) else {}
@@ -113,74 +138,36 @@ class WordPressConnector(BaseConnector):
                 "success": False,
                 "wordpress_version": None,
                 "endpoint": self.posts_endpoint,
-                "error": "Invalid URL",
+                "error": str(SourceSecurityError()),
             }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                wp_json_response = await client.get(self.wp_json_endpoint)
-                if wp_json_response.status_code != 200:
-                    return {
-                        "success": False,
-                        "wordpress_version": None,
-                        "endpoint": self.posts_endpoint,
-                        "error": f"wp-json returned {wp_json_response.status_code}",
-                    }
-
-                wp_json_data = wp_json_response.json()
-                wordpress_version = self._extract_wordpress_version(wp_json_data if isinstance(wp_json_data, dict) else {})
-
-                posts_response = await client.get(f"{self.posts_endpoint}&per_page=1")
-                if posts_response.status_code != 200:
-                    return {
-                        "success": False,
-                        "wordpress_version": wordpress_version,
-                        "endpoint": self.posts_endpoint,
-                        "error": f"posts endpoint returned {posts_response.status_code}",
-                    }
-
-                return {
-                    "success": True,
-                    "wordpress_version": wordpress_version,
-                    "endpoint": self.posts_endpoint,
-                }
-        except httpx.TimeoutException:
+            index = await self.http.get_json(self.wp_json_endpoint)
+            if not isinstance(index, dict):
+                raise SourceFetchError("malformed_structure")
+            posts = await self.fetch_latest(limit=1)
+            from app.services.source_collection import normalize_source_batch
+            normalize_source_batch(posts, self.base_url)
+            return {"success": True, "wordpress_version": self._extract_wordpress_version(index), "endpoint": self.posts_endpoint}
+        except SourceFetchError as exc:
             return {
                 "success": False,
                 "wordpress_version": None,
                 "endpoint": self.posts_endpoint,
-                "error": "Request timed out",
-            }
-        except (httpx.HTTPError, ValueError):
-            return {
-                "success": False,
-                "wordpress_version": None,
-                "endpoint": self.posts_endpoint,
-                "error": "Network error",
+                "error": str(exc),
             }
 
     async def fetch_latest(self, limit: int = 10) -> list[dict[str, object | None | list[str]]]:
         if not self._is_valid_url(self.base_url):
-            raise ValueError("Invalid URL")
+            raise SourceSecurityError()
 
         per_page = max(1, min(limit, 100))
         endpoint = f"{self.posts_endpoint}&per_page={per_page}"
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                response = await client.get(endpoint)
-                if response.status_code != 200:
-                    raise RuntimeError(f"posts endpoint returned {response.status_code}")
-
-                posts = response.json()
-                if not isinstance(posts, list):
-                    raise RuntimeError("Unexpected posts response format")
-
-                return [self._normalize_post(post) for post in posts if isinstance(post, dict)]
-        except httpx.TimeoutException as exc:
-            raise RuntimeError("Request timed out") from exc
-        except (httpx.HTTPError, ValueError) as exc:
-            raise RuntimeError("Network error") from exc
+        posts = await self.http.get_json(endpoint)
+        if not isinstance(posts, list) or any(not isinstance(post, dict) for post in posts):
+            raise SourceFetchError("malformed_structure")
+        return [self._normalize_post(post) for post in posts]
 
     async def health(self) -> dict[str, object | None]:
         connection = await self.test_connection()

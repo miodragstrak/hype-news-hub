@@ -5,6 +5,7 @@ import re
 
 from app.core.source_registry import normalize_source_url, resolve_source_name
 from app.schemas.article import NormalizedArticle
+from app.core.content_safety import safe_content_url
 
 
 def _decode_text(value: object | None) -> str:
@@ -30,7 +31,7 @@ def normalize_articles(
 
     for article in connector_articles:
         title = _decode_text(article.get("title"))
-        article_url = str(article.get("url") or "").strip()
+        article_url = safe_content_url(article.get("url"))
 
         if not title or not article_url:
             # Skip malformed entries while keeping connector and endpoint stable.
@@ -57,7 +58,7 @@ def normalize_articles(
                 published_at=str(published_at) if published_at is not None else None,
                 excerpt=_decode_text(excerpt),
                 content=_decode_text(article.get("content")) if article.get("content") is not None else None,
-                featured_image=str(featured_image).strip() if isinstance(featured_image, str) else None,
+                featured_image=safe_content_url(featured_image),
                 categories=safe_categories,
                 raw=article.get("raw") if isinstance(article.get("raw"), dict) else None,
             )

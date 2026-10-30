@@ -20,7 +20,12 @@ class Settings(BaseSettings):
         r"^https://hype-news-hub-(?:git-[a-z0-9-]+|[a-z0-9]{9})"
         r"-miodrag-straks-projects\.vercel\.app$"
     )
-    discovery_timeout_seconds: float = 8.0
+    discovery_timeout_seconds: float = 8.0  # Legacy env compatibility; shared SOURCE_HTTP_* bounds apply.
+    source_http_connect_timeout_seconds: float = Field(default=5, gt=0, allow_inf_nan=False)
+    source_http_read_timeout_seconds: float = Field(default=10, gt=0, allow_inf_nan=False)
+    source_http_request_deadline_seconds: float = Field(default=20, gt=0, allow_inf_nan=False)
+    source_http_max_response_bytes: int = Field(default=5 * 1024 * 1024, ge=1024, le=32 * 1024 * 1024)
+    source_http_max_redirects: int = Field(default=3, ge=0, le=5)
     story_merge_threshold: int = 72
     story_match_max_gap_hours: float = Field(default=48, gt=0, allow_inf_nan=False)
     news_storage_backend: Literal["memory", "postgres"] = "memory"

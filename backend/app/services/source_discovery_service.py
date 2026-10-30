@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from xml.etree import ElementTree
 
-import httpx
+import logging
 
-from app.core.config import settings
+from app.config.sources import configured_diagnostic_source
+from app.connectors.errors import SourceFetchError, SourceSecurityError
+from app.core.content_safety import plain_text, safe_content_url
+from app.services.source_collection import normalize_source_batch
 from app.schemas.discovery import DiscoveredArticle, DiscoveryResult
 
 SOURCES: list[dict[str, str]] = [
@@ -17,41 +20,7 @@ SOURCES: list[dict[str, str]] = [
 ]
 
 RSS_PATHS = ["/feed/", "/rss", "/rss.xml", "/feed.xml"]
-
-
-def _extract_wp_featured_image(post: dict) -> str | None:
-    embedded = post.get("_embedded", {})
-    featured = embedded.get("wp:featuredmedia", [])
-    if featured and isinstance(featured, list):
-        image = featured[0].get("source_url")
-        if isinstance(image, str):
-            return image
-    return None
-
-
-def _extract_wp_categories(post: dict) -> list[str]:
-    embedded = post.get("_embedded", {})
-    terms = embedded.get("wp:term", [])
-    categories: list[str] = []
-
-    for term_group in terms:
-        if not isinstance(term_group, list):
-            continue
-        for term in term_group:
-            if term.get("taxonomy") == "category" and isinstance(term.get("name"), str):
-                categories.append(term["name"])
-
-    return categories
-
-
-def _extract_wp_sample_article(post: dict) -> DiscoveredArticle:
-    return DiscoveredArticle(
-        title=(post.get("title") or {}).get("rendered"),
-        date=post.get("date"),
-        image=_extract_wp_featured_image(post),
-        url=post.get("link"),
-        categories=_extract_wp_categories(post),
-    )
+logger = logging.getLogger(__name__)
 
 
 def _find_first_text(element: ElementTree.Element, tags: list[str]) -> str | None:
@@ -66,6 +35,8 @@ def _extract_rss_sample_article(root: ElementTree.Element) -> DiscoveredArticle 
     item = root.find("./channel/item")
     if item is None:
         item = root.find("./entry")
+    if item is None:
+        item = root.find("{http://www.w3.org/2005/Atom}entry")
 
     if item is None:
         return None
@@ -100,52 +71,56 @@ def _extract_rss_sample_article(root: ElementTree.Element) -> DiscoveredArticle 
     elif enclosure is not None and enclosure.attrib.get("type", "").startswith("image/"):
         image = enclosure.attrib.get("url")
 
-    return DiscoveredArticle(title=title, date=date, image=image, url=link)
+    return DiscoveredArticle(title=plain_text(title), date=date, image=safe_content_url(image), url=safe_content_url(link))
 
 
-async def _try_wordpress(client: httpx.AsyncClient, base_url: str) -> tuple[bool, str | None, DiscoveredArticle | None]:
-    wp_json_url = f"{base_url}/wp-json"
-    posts_url = f"{base_url}/wp-json/wp/v2/posts?_embed&per_page=1"
+async def _try_wordpress(connector, source) -> tuple[bool, str | None, DiscoveredArticle | None]:
 
     is_wordpress = False
     sample_article = None
     posts_endpoint = None
 
     try:
-        wp_response = await client.get(wp_json_url)
-        is_wordpress = wp_response.status_code == 200
-    except httpx.HTTPError:
-        is_wordpress = False
+        index = await connector.http.get_json(connector.wp_json_endpoint)
+        is_wordpress = isinstance(index, dict)
+    except SourceSecurityError:
+        raise
+    except SourceFetchError as exc:
+        logger.info("discovery_stage=index source=%s outcome=%s", source.name, exc.code)
 
     try:
-        posts_response = await client.get(posts_url)
-        if posts_response.status_code == 200:
-            data = posts_response.json()
-            if isinstance(data, list) and data:
-                first_post = data[0]
-                if isinstance(first_post, dict):
-                    sample_article = _extract_wp_sample_article(first_post)
-            posts_endpoint = posts_url
-            is_wordpress = True
-    except (httpx.HTTPError, ValueError):
-        pass
+        data = await connector.fetch_latest(limit=1)
+        normalized = normalize_source_batch(data, source.url, source.connector, source.name)
+        if normalized:
+            article = normalized[0]
+            sample_article = DiscoveredArticle(title=article.title, date=article.published_at,
+                image=article.featured_image, url=article.url, categories=article.categories)
+        posts_endpoint = connector.posts_endpoint + "&per_page=1"
+        is_wordpress = True
+    except SourceSecurityError:
+        raise
+    except SourceFetchError as exc:
+        logger.info("discovery_stage=posts source=%s outcome=%s", source.name, exc.code)
 
     return is_wordpress, posts_endpoint, sample_article
 
 
-async def _try_rss(client: httpx.AsyncClient, base_url: str) -> tuple[bool, str | None, DiscoveredArticle | None]:
+async def _try_rss(client, base_url: str) -> tuple[bool, str | None, DiscoveredArticle | None]:
     for path in RSS_PATHS:
         endpoint = f"{base_url}{path}"
 
         try:
             response = await client.get(endpoint)
-            if response.status_code != 200:
+            if b"\x00" in response.content or b"<!DOCTYPE" in response.content.upper() or b"<!ENTITY" in response.content.upper():
+                raise SourceFetchError("malformed_structure")
+            root = ElementTree.fromstring(response.content)
+            if root.tag not in {"rss", "feed", "{http://www.w3.org/2005/Atom}feed"}:
                 continue
-
-            root = ElementTree.fromstring(response.text)
             sample_article = _extract_rss_sample_article(root)
             return True, endpoint, sample_article
-        except (httpx.HTTPError, ElementTree.ParseError):
+        except SourceSecurityError:
+            raise
+        except (SourceFetchError, ElementTree.ParseError):
             continue
 
     return False, None, None
@@ -156,49 +131,47 @@ def _normalize_base_url(url: str) -> str:
 
 
 async def discover_sources() -> list[DiscoveryResult]:
-    timeout = httpx.Timeout(settings.discovery_timeout_seconds)
     results: list[DiscoveryResult] = []
 
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        for source in SOURCES:
-            name = source["name"]
-            base_url = _normalize_base_url(source["url"])
+    for source in SOURCES:
+        name = source["name"]
+        base_url = _normalize_base_url(source["url"])
 
-            wordpress = False
-            rss = False
-            posts_endpoint = None
-            rss_endpoint = None
-            sample_article = None
+        wordpress = False
+        rss = False
+        posts_endpoint = None
+        rss_endpoint = None
+        sample_article = None
 
-            try:
-                wordpress, posts_endpoint, wp_sample = await _try_wordpress(client, base_url)
-                rss, rss_endpoint, rss_sample = await _try_rss(client, base_url)
+        try:
+            configured = configured_diagnostic_source(base_url)
+            connector = configured.connector_factory(configured.url)
+            wordpress, posts_endpoint, wp_sample = await _try_wordpress(connector, configured)
+            rss, rss_endpoint, rss_sample = await _try_rss(connector.http, configured.url)
+            sample_article = wp_sample if wp_sample is not None else rss_sample
+        except SourceFetchError as exc:
+            logger.warning("discovery_stage=source source=%s outcome=%s", name, exc.code)
+        except Exception as exc:
+            logger.warning("discovery_stage=source source=%s outcome=connector_error type=%s", name, type(exc).__name__)
 
-                if wp_sample is not None:
-                    sample_article = wp_sample
-                elif rss_sample is not None:
-                    sample_article = rss_sample
-            except Exception:
-                # Discovery should keep processing even if one source fails.
-                pass
+        # Existing API hint only; no scraping or collection fallback is executed.
+        preferred = "html_scraping"
+        if wordpress and posts_endpoint:
+            preferred = "wordpress"
+        elif rss and rss_endpoint:
+            preferred = "rss"
 
-            preferred = "html_scraping"
-            if wordpress and posts_endpoint:
-                preferred = "wordpress"
-            elif rss and rss_endpoint:
-                preferred = "rss"
-
-            results.append(
-                DiscoveryResult(
-                    name=name,
-                    url=base_url,
-                    wordpress=wordpress,
-                    rss=rss,
-                    preferred=preferred,
-                    posts_endpoint=posts_endpoint,
-                    rss_endpoint=rss_endpoint,
-                    sample_article=sample_article,
-                )
+        results.append(
+            DiscoveryResult(
+                name=name,
+                url=base_url,
+                wordpress=wordpress,
+                rss=rss,
+                preferred=preferred,
+                posts_endpoint=posts_endpoint,
+                rss_endpoint=rss_endpoint,
+                sample_article=sample_article,
             )
+        )
 
     return results
