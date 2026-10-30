@@ -18,6 +18,7 @@ from app.schemas.story import Story as APIStory
 from app.services.article_identity import canonicalize_url, identity_hash
 from app.services.story_matcher import publication_times_eligible, similarity_score
 from app.services.timestamps import parse_published_at, published_sort_key
+from app.core.content_safety import safe_content_url
 
 COLLECTION_LOCK = 0x484E480F
 STORAGE_HEADERS = ["X-News-Storage", "X-Collection-State", "X-Collection-Run-Id", "X-Collection-New-Articles"]
@@ -67,9 +68,9 @@ def api_article(article: CollectedArticle) -> NormalizedArticle:
         connector=metadata.get("connector", article.source.connector),
         source=metadata.get("source", article.source.name),
         source_url=metadata.get("source_url", article.source.url),
-        language=article.language, title=article.title, url=metadata.get("url", article.url),
+        language=article.language, title=article.title, url=safe_content_url(metadata.get("url")) or safe_content_url(article.url) or "",
         published_at=metadata.get("published_at", article.published_at.isoformat() if article.published_at else None),
-        excerpt=article.excerpt, content=article.content, featured_image=article.featured_image,
+        excerpt=article.excerpt, content=article.content, featured_image=safe_content_url(article.featured_image),
         categories=list(article.categories), raw=article.raw,
     )
 

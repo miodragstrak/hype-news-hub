@@ -5,3 +5,5 @@ alembic==1.16.4
 psycopg[binary]>=3.2.13,<3.3
 pydantic-settings==2.10.1
 httpx==0.28.1
+# Direct dependency: public network-backend API used for SSRF-safe IP pinning.
+httpcore==1.0.9

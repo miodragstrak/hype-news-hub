@@ -7,7 +7,8 @@ from starlette.concurrency import run_in_threadpool
 from app.config.sources import HYPE_SOURCES
 from app.schemas.article import NormalizedArticle
 from app.schemas.collector import CollectArticlesResponse, CollectionSourceResult
-from app.services.article_normalizer import normalize_articles
+from app.services.source_collection import normalize_source_batch
+from app.connectors.errors import SourceFetchError
 from app.services.story_service import build_stories_from_articles, set_latest_stories
 from app.services.timestamps import published_sort_key
 
@@ -31,7 +32,7 @@ async def collect_articles(limit_per_source: int = 5, repository=None, response_
         try:
             connector = source.connector_factory(source.url)
             connector_articles = await connector.fetch_latest(limit=limit_per_source)
-            normalized = normalize_articles(
+            normalized = normalize_source_batch(
                 connector_articles=connector_articles,
                 source_url=source.url,
                 connector=source.connector,
@@ -45,7 +46,7 @@ async def collect_articles(limit_per_source: int = 5, repository=None, response_
             sources_failed += 1
             logger.exception("Failed collecting source %s (%s): %s", source.name, source.url, exc)
             source_results.append(CollectionSourceResult(
-                name=source.name, url=source.url, status="failed", error="Unable to collect this source.",
+                name=source.name, url=source.url, status="failed", error=str(exc) if isinstance(exc, SourceFetchError) else "Unable to collect this source.",
             ))
 
     sorted_articles = sorted(articles, key=_published_sort_key, reverse=True)

@@ -2,6 +2,19 @@
 
 Internal application for aggregating and processing entertainment news.
 
+## Sprint 15C: source reliability and security
+
+Hype Serbia requests selective WordPress media/term embedding; discovery and
+collection share its source policy. Hype Production stays configured and a valid
+empty posts array is a successful empty result. No corporate pages or scraping
+fallbacks are collected.
+
+URL-accepting diagnostics now allow only configured HTTPS source origins.
+Outbound requests validate all DNS answers, pin public destination IPs while
+preserving TLS hostname verification, and bound redirects, response size and
+timeouts. See [source connector policies, safe diagnostics and verification](docs/source-connectors.md)
+for error semantics, configuration and the website-operator dependency.
+
 ## Sprint 15B: persistent collection
 
 `NEWS_STORAGE_BACKEND=memory` remains the default for Render and development
@@ -76,9 +89,10 @@ npm run typecheck
 npm run build
 ```
 
-Backend tests mock source connectors and exercise the in-process FastAPI API.
+Backend tests use mocked connectors/transports and exercise the in-process FastAPI API.
+Opt-in PostgreSQL tests use the isolated database described in `docs/postgresql.md`.
 Frontend tests use Vitest, jsdom, and React Testing Library with mocked backend
-requests. They do not access live sources, a database, AI services, or WordPress.
+requests. Automated tests do not contact live sources, AI services, or WordPress publishing.
 No deployment is part of these commands.
 
 ## Structure
