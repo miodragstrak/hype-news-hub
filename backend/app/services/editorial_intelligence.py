@@ -173,8 +173,8 @@ def build_editorial_story(story: Story) -> EditorialQueueStory:
     )
 
 
-def get_editorial_queue_response() -> EditorialQueueResponse:
-    editorial_stories = [build_editorial_story(story) for story in get_latest_stories()]
+def get_editorial_queue_response(repository=None) -> EditorialQueueResponse:
+    editorial_stories = [build_editorial_story(story) for story in get_latest_stories(repository)]
     sorted_stories = sorted(
         editorial_stories,
         key=lambda story: (story.importance_score, story.confidence_score, published_sort_key(story.published_at)),

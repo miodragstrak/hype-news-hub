@@ -104,11 +104,15 @@ def set_latest_stories(stories: list[Story]) -> None:
     _latest_stories = _sort_stories(stories)
 
 
-def get_latest_stories() -> list[Story]:
+def get_latest_stories(repository=None) -> list[Story]:
+    if repository is not None:
+        return repository.get_stories()
     return _sort_stories(_latest_stories)
 
 
-def get_story_by_id(story_id: str) -> Story | None:
+def get_story_by_id(story_id: str, repository=None) -> Story | None:
+    if repository is not None:
+        return repository.get_story(story_id)
     for story in _latest_stories:
         if story.id == story_id:
             return story
@@ -116,6 +120,6 @@ def get_story_by_id(story_id: str) -> Story | None:
     return None
 
 
-def get_stories_response() -> StoriesResponse:
-    story_summaries = [_story_summary(story) for story in get_latest_stories()]
+def get_stories_response(repository=None) -> StoriesResponse:
+    story_summaries = [_story_summary(story) for story in get_latest_stories(repository)]
     return StoriesResponse(stories_total=len(story_summaries), stories=story_summaries)

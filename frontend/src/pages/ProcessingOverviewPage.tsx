@@ -10,7 +10,7 @@ export function ProcessingOverviewPage(): JSX.Element {
   const stats = [
     { label: "Articles Collected", value: collectionResult?.articles_total ?? 0 },
     { label: "Articles Grouped into Existing Stories", value: collectionResult?.story_candidates_total ?? 0 },
-    { label: "Stories Created", value: collectionResult?.stories_total ?? 0 },
+    { label: "Available Stories", value: collectionResult?.stories_total ?? 0 },
     { label: "Stories in Editorial Queue", value: isLoadingEditorial || editorialError ? "Unavailable" : editorialStories.length },
   ];
   const status = outcome === "running" ? "Collection in progress. Waiting for processing results." :

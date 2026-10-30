@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, CheckConstraint, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Computed, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, Timestamps, UUIDPrimaryKey
@@ -15,7 +15,9 @@ class NewsSource(UUIDPrimaryKey, Timestamps, Base):
     )
 
     name: Mapped[str] = mapped_column(Text)
-    url: Mapped[str] = mapped_column(Text, unique=True)
+    url: Mapped[str] = mapped_column(Text)
+    identity_url: Mapped[str | None] = mapped_column(Text)
+    url_key: Mapped[str] = mapped_column(String(64), Computed("hnh_identity_hash(COALESCE(identity_url, url))"), unique=True)
     connector: Mapped[str] = mapped_column(String(32), default="wordpress", server_default="wordpress")
     language: Mapped[str | None] = mapped_column(String(16))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))

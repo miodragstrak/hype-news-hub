@@ -165,8 +165,8 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
         return;
       }
 
-      // /collect already contains the summaries for this run; do not replace
-      // them with a second, potentially different /stories snapshot.
+      // /collect supplies the complete visible snapshot: retained stories in
+      // PostgreSQL mode, or the latest collection in memory/demo mode.
       collectionVersion.current += 1;
       setStories(data.stories);
       setStoriesError(null);

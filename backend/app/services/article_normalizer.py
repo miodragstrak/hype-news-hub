@@ -56,10 +56,10 @@ def normalize_articles(
                 url=article_url,
                 published_at=str(published_at) if published_at is not None else None,
                 excerpt=_decode_text(excerpt),
-                content=None,
+                content=_decode_text(article.get("content")) if article.get("content") is not None else None,
                 featured_image=str(featured_image).strip() if isinstance(featured_image, str) else None,
                 categories=safe_categories,
-                raw=None,
+                raw=article.get("raw") if isinstance(article.get("raw"), dict) else None,
             )
         )
 
