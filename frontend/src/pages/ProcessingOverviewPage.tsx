@@ -1,135 +1,49 @@
-import { motion } from "framer-motion";
-import { ArrowRight, CheckCircle2, Circle, Loader2 } from "lucide-react";
-import { Fragment } from "react";
-
 import { NextStepPanel } from "../components/NextStepPanel";
 import { Card, CardContent } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
+import { collectionOutcome } from "../lib/collection";
 
 export function ProcessingOverviewPage(): JSX.Element {
-  const { collectionResult } = useDemoData();
-
-  const collected = collectionResult?.articles_total ?? 25;
-  const duplicatesMerged = Math.max(1, Math.floor(collected * 0.12));
-  const uniqueStories = Math.max(collected - duplicatesMerged, 0);
-  const readyForReview = Math.max(1, Math.floor(uniqueStories * 0.68));
-
-  const processingStages = [
-    { label: "Collected", message: "AI collected articles" },
-    { label: "Normalized", message: "AI normalized content" },
-    { label: "Stories Created", message: "AI groups related stories..." },
-    { label: "Duplicates Merged", message: "AI merges duplicate coverage..." },
-    { label: "Editorially Ranked", message: "AI evaluates editorial importance..." },
-    { label: "Ready for Review", message: "AI prepares the editorial queue..." }
-  ];
-
-  const activeStageIndex = collectionResult ? -1 : 0;
-  const completedStages = collectionResult ? processingStages.length : 0;
-
+  const { collectionResult, isCollecting, collectError, editorialStories, editorialError, isLoadingEditorial } = useDemoData();
+  const outcome = collectionOutcome(collectionResult, isCollecting, collectError);
+  const hasResults = outcome === "complete" || outcome === "partial";
   const stats = [
-    { label: "Articles Collected", value: collected },
-    { label: "Duplicates Merged", value: duplicatesMerged },
-    { label: "Unique Stories", value: uniqueStories },
-    { label: "Ready For Review", value: readyForReview }
+    { label: "Articles Collected", value: collectionResult?.articles_total ?? 0 },
+    { label: "Articles Grouped into Existing Stories", value: collectionResult?.story_candidates_total ?? 0 },
+    { label: "Stories Created", value: collectionResult?.stories_total ?? 0 },
+    { label: "Stories in Editorial Queue", value: isLoadingEditorial || editorialError ? "Unavailable" : editorialStories.length },
   ];
-
-  const isProcessingComplete = Boolean(collectionResult);
+  const status = outcome === "running" ? "Collection in progress. Waiting for processing results." :
+    outcome === "failed" ? "Latest collection failed." : outcome === "partial" ? "Results available with source failures." :
+    hasResults ? "Collection and story grouping completed." : "Run collection to obtain processing results.";
 
   return (
-    <section className="space-y-7">
+    <section className="space-y-6">
       <header className="space-y-2">
         <h2 className="text-4xl font-bold tracking-tight text-white">Process Editorial Pipeline</h2>
-        <p className="text-[#c2d3f5]">AI normalizes content, merges duplicate coverage, and ranks stories for review.</p>
-        <p className="text-sm text-[#b5c8ed]">Actions can be reviewed before publishing.</p>
+        <p className="text-[#c2d3f5]">Normalization, heuristic story matching, and rules-based editorial scoring.</p>
       </header>
-
-      <Card className="border-white/25 bg-[#0a285f]">
-        <CardContent className="space-y-4 p-7">
-          <div className="flex gap-3 overflow-x-auto pb-2 xl:grid xl:grid-cols-[repeat(11,minmax(0,1fr))] xl:items-center xl:overflow-visible">
-            {processingStages.map((stage, index) => {
-              const done = index < completedStages;
-              const active = activeStageIndex === index;
-              return (
-                <Fragment key={stage.label}>
-                  <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.06, duration: 0.35 }}
-                    className={`inline-flex min-w-[176px] items-center gap-2 rounded-2xl border px-4 py-3 xl:min-w-0 ${
-                      done
-                        ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-50"
-                        : active
-                        ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
-                        : "border-white/20 bg-[#08245a] text-[#d4e2ff]"
-                    }`}
-                  >
-                    {done ? (
-                      <CheckCircle2 className="h-5 w-5 shrink-0" />
-                    ) : active ? (
-                      <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
-                    ) : (
-                      <Circle className="h-5 w-5 shrink-0 text-[#b0c3ea]" />
-                    )}
-                    <p className="text-sm font-semibold leading-snug">{stage.label}</p>
-                  </motion.div>
-                  {index < processingStages.length - 1 ? (
-                    <ArrowRight className="hidden h-5 w-5 shrink-0 self-center justify-self-center text-[#f5c518] xl:block" />
-                  ) : null}
-                </Fragment>
-              );
-            })}
-          </div>
-
-          <div className="rounded-2xl border border-white/20 bg-[#08245a] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b7c9ee]">
-              {isProcessingComplete ? "Completed" : `Step ${activeStageIndex + 1} of ${processingStages.length}`}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-white">
-              {isProcessingComplete ? "Processing completed successfully." : processingStages[activeStageIndex].message}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat, index) => (
-          <motion.div key={stat.label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 }}>
-            <Card>
-              <CardContent className="p-5">
-                <p className="text-xs uppercase tracking-[0.15em] text-[#b5c8ed]">{stat.label}</p>
-                <p className="mt-3 text-5xl font-bold text-white">{stat.value}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </section>
-
-      {isProcessingComplete ? (
-        <Card className="border-emerald-400/35 bg-emerald-500/10">
-          <CardContent className="space-y-3 p-6">
-            <h3 className="text-2xl font-bold text-emerald-100">Processing completed successfully.</h3>
-            <ul className="space-y-1 text-sm text-emerald-50">
-              <li>{collected} articles collected</li>
-              <li>{duplicatesMerged} duplicates merged</li>
-              <li>{uniqueStories} unique stories</li>
-              <li>{readyForReview} ready for review</li>
-            </ul>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-white/20 bg-[#0a285f]">
-          <CardContent className="p-6 text-sm text-[#d4e2ff]">Run collection first to complete all processing stages.</CardContent>
-        </Card>
-      )}
-
+      <Card><CardContent className="space-y-3 p-6" role={outcome === "failed" ? "alert" : "status"}>
+        <h3 className="text-2xl font-bold">{status}</h3>
+        {collectError ? <p>{collectError}</p> : null}
+        {collectionResult?.sources_failed ? <p>Sources failed: {collectionResult.sources_failed} of {collectionResult.sources_processed}</p> : null}
+        {isCollecting ? <p>Collection counts show the latest available response while the request finishes.</p> :
+          collectError && collectionResult ? <p>Collection counts below describe the last received response.</p> : null}
+        {editorialError ? <p role="alert">Editorial queue unavailable: {editorialError}</p> :
+          isLoadingEditorial ? <p>Loading editorial queue...</p> : <p>Editorial queue loaded: {editorialStories.length} stories.</p>}
+      </CardContent></Card>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map((stat) => <Card key={stat.label}><CardContent className="p-5">
+          <p className="text-xs uppercase tracking-[0.15em] text-[#b5c8ed]">{stat.label}</p>
+          <p className="mt-3 text-4xl font-bold">{stat.value}</p>
+        </CardContent></Card>)}
+      </div>
+      <p className="text-sm text-[#c2d3f5]">Grouped articles represent matching coverage, not verified duplicate removal. AI draft generation and human approval are separate steps.</p>
       <NextStepPanel
-        message={
-          isProcessingComplete
-            ? "Processing is complete. Review the ranked editorial stories and confirm the next publishing candidate."
-            : "Collection is required before processing can complete. Go back and run Start Collection."
-        }
-        ctaLabel={isProcessingComplete ? "Review Stories" : "Return to Collect"}
-        ctaTo={isProcessingComplete ? "/review" : "/"}
+        message={editorialStories.length > 0 && !editorialError ? "Inspect original sources in the editorial queue." : "Collect articles and load the editorial queue before reviewing stories."}
+        ctaLabel={editorialStories.length > 0 && !editorialError ? "Review Stories" : "Return to Collect"}
+        ctaTo={editorialStories.length > 0 && !editorialError ? "/review" : "/"}
+        disabled={isCollecting || isLoadingEditorial}
       />
     </section>
   );

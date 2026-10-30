@@ -42,7 +42,7 @@ const FALLBACK_IMAGES = [
 ];
 
 export function EditorialQueuePage(): JSX.Element {
-  const { editorialStories, articles } = useDemoData();
+  const { editorialStories, articles, isLoadingEditorial, editorialError, isCollecting } = useDemoData();
 
   const stories = [...editorialStories].sort((left, right) => right.importance_score - left.importance_score);
 
@@ -59,8 +59,8 @@ export function EditorialQueuePage(): JSX.Element {
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <p className="text-lg font-semibold">No editorial stories yet.</p>
-          <p className="mt-2 text-[#c2d3f5]">Run Start Collection to build a prioritized editorial queue.</p>
+          <p className="text-lg font-semibold">{isCollecting ? "Collection in progress." : isLoadingEditorial ? "Loading editorial stories..." : editorialError ? "Editorial queue unavailable." : "No editorial stories yet."}</p>
+          <p className="mt-2 text-[#c2d3f5]">{editorialError ?? "Run Start Collection to build a prioritized editorial queue."}</p>
         </CardContent>
       </Card>
     );
@@ -107,7 +107,7 @@ export function EditorialQueuePage(): JSX.Element {
                   {[
                     { label: "Sources", value: story.source_count, icon: Hash },
                     { label: "Coverage", value: story.coverage, icon: ShieldCheck },
-                    { label: "Similarity", value: `${story.similarity_score}%`, icon: Sparkles },
+                    { label: "Similarity", value: story.article_count > 1 ? `${story.similarity_score}%` : "No match yet", icon: Sparkles },
                     { label: "Importance", value: story.importance_score, icon: Gauge }
                   ].map((metric) => (
                     <div key={metric.label} className="min-w-0 rounded-2xl border border-white/20 bg-[#08245a] p-4">

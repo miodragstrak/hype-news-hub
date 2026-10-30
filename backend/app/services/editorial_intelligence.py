@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from app.schemas.editorial import EditorialIntelligence, EditorialQueueResponse, EditorialQueueStory
 from app.schemas.story import Story
 from app.services.story_service import get_latest_stories
+from app.services.timestamps import parse_published_at as _parse_timestamp, published_sort_key
 
 _CATEGORY_WEIGHTS: dict[str, int] = {
     "politics": 90,
@@ -18,21 +19,6 @@ _CATEGORY_WEIGHTS: dict[str, int] = {
     "sports": 68,
     "technology": 74,
 }
-
-
-def _parse_timestamp(value: str | None) -> datetime | None:
-    if not value:
-        return None
-
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-
-    return parsed.astimezone(timezone.utc)
 
 
 def source_country_code(source: str) -> str:
@@ -191,7 +177,7 @@ def get_editorial_queue_response() -> EditorialQueueResponse:
     editorial_stories = [build_editorial_story(story) for story in get_latest_stories()]
     sorted_stories = sorted(
         editorial_stories,
-        key=lambda story: (story.importance_score, story.confidence_score, story.published_at or ""),
+        key=lambda story: (story.importance_score, story.confidence_score, published_sort_key(story.published_at)),
         reverse=True,
     )
 

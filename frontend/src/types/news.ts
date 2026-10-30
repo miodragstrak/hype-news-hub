@@ -33,6 +33,14 @@ export type NormalizedArticle = {
   raw: Record<string, unknown> | null;
 };
 
+export type CollectionSourceResult = {
+  name: string;
+  url: string;
+  status: "success" | "failed";
+  articles_total: number;
+  error: string | null;
+};
+
 export type CollectArticlesResponse = {
   sources_processed: number;
   sources_failed: number;
@@ -41,6 +49,8 @@ export type CollectArticlesResponse = {
   story_candidates_total: number;
   stories_total: number;
   stories: StorySummary[];
+  // Optional for compatibility with backends deployed before Sprint 14A.
+  source_results?: CollectionSourceResult[];
 };
 
 export type StoryStatus = "collected" | "merged" | "translated" | "draft" | "review" | "published";
