@@ -5,51 +5,54 @@ from datetime import datetime
 
 from app.config.sources import HYPE_SOURCES
 from app.schemas.article import NormalizedArticle
-from app.schemas.collector import CollectArticlesResponse
+from app.schemas.collector import CollectArticlesResponse, CollectionSourceResult
 from app.services.article_normalizer import normalize_articles
 from app.services.story_service import build_stories_from_articles, set_latest_stories
+from app.services.timestamps import published_sort_key
 
 logger = logging.getLogger(__name__)
 
 
 def _published_sort_key(article: NormalizedArticle) -> datetime:
-    if not article.published_at:
-        return datetime.min
-
-    try:
-        return datetime.fromisoformat(article.published_at.replace("Z", "+00:00"))
-    except ValueError:
-        return datetime.min
+    return published_sort_key(article.published_at)
 
 
 async def collect_articles(limit_per_source: int = 5) -> CollectArticlesResponse:
     articles: list[NormalizedArticle] = []
     sources_failed = 0
+    source_results: list[CollectionSourceResult] = []
 
     for source in HYPE_SOURCES:
-        connector = source.connector_factory(source.url)
-
         try:
+            connector = source.connector_factory(source.url)
             connector_articles = await connector.fetch_latest(limit=limit_per_source)
-            articles.extend(
-                normalize_articles(
-                    connector_articles=connector_articles,
-                    source_url=source.url,
-                    connector=source.connector,
-                    source_name=source.name,
-                )
+            normalized = normalize_articles(
+                connector_articles=connector_articles,
+                source_url=source.url,
+                connector=source.connector,
+                source_name=source.name,
             )
+            articles.extend(normalized)
+            source_results.append(CollectionSourceResult(
+                name=source.name, url=source.url, status="success", articles_total=len(normalized),
+            ))
         except Exception as exc:
             sources_failed += 1
             logger.exception("Failed collecting source %s (%s): %s", source.name, source.url, exc)
+            source_results.append(CollectionSourceResult(
+                name=source.name, url=source.url, status="failed", error="Unable to collect this source.",
+            ))
 
     sorted_articles = sorted(articles, key=_published_sort_key, reverse=True)
     story_build = build_stories_from_articles(sorted_articles)
-    set_latest_stories(story_build.stories)
+    # A failed attempt must not erase the last usable in-memory snapshot.
+    if sources_failed < len(HYPE_SOURCES):
+        set_latest_stories(story_build.stories)
 
     return CollectArticlesResponse(
         sources_processed=len(HYPE_SOURCES),
         sources_failed=sources_failed,
+        source_results=source_results,
         articles_total=len(sorted_articles),
         articles=sorted_articles,
         story_candidates_total=story_build.story_candidates_total,

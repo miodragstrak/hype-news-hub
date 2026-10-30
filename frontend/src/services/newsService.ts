@@ -9,8 +9,7 @@ import type {
   StorySummary,
 } from "../types/news";
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
-const DEMO_MODE = API_BASE_URL.length === 0;
+import { DEMO_MODE, requestJson } from "./apiClient";
 
 const DEMO_SOURCES: DiscoveryResult[] = [
   {
@@ -265,9 +264,16 @@ const DEMO_COLLECTION_RESULT: CollectArticlesResponse = {
   sources_failed: 0,
   articles_total: DEMO_ARTICLES.length,
   articles: DEMO_ARTICLES,
-  story_candidates_total: DEMO_ARTICLES.length,
+  story_candidates_total: DEMO_ARTICLES.length - DEMO_STORIES.length,
   stories_total: DEMO_STORIES.length,
-  stories: DEMO_STORIES
+  stories: DEMO_STORIES,
+  source_results: DEMO_SOURCES.map((source) => ({
+    name: source.name,
+    url: source.url,
+    status: "success",
+    articles_total: DEMO_ARTICLES.filter((article) => article.source_url === source.url).length,
+    error: null,
+  })),
 };
 
 const DEMO_EDITORIAL_STORY_OVERRIDES = new Map<string, Pick<EditorialStoryWorkspace, "status" | "serbian_draft">>();
@@ -350,33 +356,11 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function logDemoFallback(reason: string, error?: unknown): void {
-  if (error) {
-    console.warn(`[newsService] ${reason}. Using demo data fallback.`, error);
-    return;
-  }
-
-  console.info(`[newsService] ${reason}. Using demo data fallback.`);
-}
-
-async function fetchWithFallback<T>(path: string, fallback: T, errorMessage: string): Promise<T> {
+async function fetchNews<T>(path: string, demoData: T, errorMessage: string): Promise<T> {
   if (DEMO_MODE) {
-    logDemoFallback("VITE_API_URL/VITE_API_BASE_URL not configured");
-    return clone(fallback);
+    return clone(demoData);
   }
-
-  try {
-    const response = await fetch(`${API_BASE_URL}${path}`);
-
-    if (!response.ok) {
-      throw new Error(`${errorMessage} (status ${response.status})`);
-    }
-
-    return (await response.json()) as T;
-  } catch (error) {
-    logDemoFallback(errorMessage, error);
-    return clone(fallback);
-  }
+  return requestJson<T>(path, errorMessage);
 }
 
 export function isDemoDataModeEnabled(): boolean {
@@ -410,15 +394,15 @@ export function getDemoEditorialStoryWorkspace(storyId: string): EditorialStoryW
 }
 
 export async function getDiscoverySources(): Promise<DiscoveryResult[]> {
-  return fetchWithFallback("/api/discovery", DEMO_SOURCES, "Unable to fetch source discovery");
+  return fetchNews("/api/discovery", DEMO_SOURCES, "Unable to fetch source discovery");
 }
 
 export async function collectLatestNews(): Promise<CollectArticlesResponse> {
-  return fetchWithFallback("/api/collect", DEMO_COLLECTION_RESULT, "Collection failed. Please try again.");
+  return fetchNews("/api/collect", DEMO_COLLECTION_RESULT, "Collection failed");
 }
 
 export async function getStories(): Promise<StoriesResponse> {
-  return fetchWithFallback(
+  return fetchNews(
     "/api/stories",
     {
       stories_total: DEMO_STORIES.length,
@@ -429,7 +413,7 @@ export async function getStories(): Promise<StoriesResponse> {
 }
 
 export async function getEditorialQueue(): Promise<EditorialQueueResponse> {
-  return fetchWithFallback(
+  return fetchNews(
     "/api/editorial-queue",
     {
       stories_total: DEMO_EDITORIAL_QUEUE.length,
@@ -441,16 +425,10 @@ export async function getEditorialQueue(): Promise<EditorialQueueResponse> {
 
 export async function getEditorialStoryWorkspace(storyId: string): Promise<EditorialStoryWorkspace> {
   if (DEMO_MODE) {
-    logDemoFallback("VITE_API_URL/VITE_API_BASE_URL not configured");
     return getDemoEditorialStoryWorkspace(storyId);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/editorial-stories/${encodeURIComponent(storyId)}`);
-  if (!response.ok) {
-    throw new Error(response.status === 404 ? "Editorial story not found" : `Unable to fetch editorial story (status ${response.status})`);
-  }
-
-  return (await response.json()) as EditorialStoryWorkspace;
+  return requestJson<EditorialStoryWorkspace>(`/api/editorial-stories/${encodeURIComponent(storyId)}`, "Unable to fetch editorial story");
 }
 
 export async function generateDemoEditorialStoryDraft(storyId: string): Promise<EditorialStoryWorkspace> {
@@ -470,12 +448,7 @@ export async function generateDemoEditorialStoryDraft(storyId: string): Promise<
     return getDemoEditorialStoryWorkspace(storyId);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/editorial-stories/${encodeURIComponent(storyId)}/generate-demo-draft`, {
+  return requestJson<EditorialStoryWorkspace>(`/api/editorial-stories/${encodeURIComponent(storyId)}/generate-demo-draft`, "Unable to generate demo draft", {
     method: "POST",
   });
-  if (!response.ok) {
-    throw new Error(response.status === 404 ? "Editorial story not found" : `Unable to generate demo draft (status ${response.status})`);
-  }
-
-  return (await response.json()) as EditorialStoryWorkspace;
 }

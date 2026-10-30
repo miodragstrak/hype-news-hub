@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 from difflib import SequenceMatcher
 
 from app.schemas.article import NormalizedArticle
+from app.services.timestamps import parse_published_at as _parse_published_at
 
 _WORD_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 
@@ -35,20 +35,6 @@ def title_similarity(left: str, right: str) -> float:
     overlap_score = len(left_tokens & right_tokens) / max(len(left_tokens | right_tokens), 1)
 
     return (sequence_score * 0.65) + (overlap_score * 0.35)
-
-
-def _parse_published_at(value: str | None) -> datetime | None:
-    if not value:
-        return None
-
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
 def time_proximity_score(left: str | None, right: str | None) -> float:

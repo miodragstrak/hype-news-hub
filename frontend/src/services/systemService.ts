@@ -1,17 +1,10 @@
 import type { SystemStatus } from "../types/system";
-
-const API_BASE_URL = (import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+import { DEMO_MODE, requestJson } from "./apiClient";
 
 export async function getSystemStatus(): Promise<SystemStatus> {
-  if (!API_BASE_URL) {
+  if (DEMO_MODE) {
     throw new Error("Backend status unavailable in demo mode");
   }
 
-  const response = await fetch(`${API_BASE_URL}/`);
-
-  if (!response.ok) {
-    throw new Error("Unable to fetch backend status");
-  }
-
-  return response.json() as Promise<SystemStatus>;
+  return requestJson<SystemStatus>("/", "Unable to fetch backend status");
 }

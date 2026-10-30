@@ -1,26 +1,14 @@
-import { motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, ImageIcon, Loader2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
 import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
 import { buildDraftPackage, flagLabel, languageLabel, PREPARED_DURING_PROCESSING } from "../lib/editorialDraft";
 import { getEditorialStoryWorkspace } from "../services/newsService";
 import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
-
-const timeline = [
-  { label: "Articles Collected", state: "complete" },
-  { label: "Content Normalized", state: "complete" },
-  { label: "Related Sources Merged", state: "complete" },
-  { label: "Editorially Scored", state: "complete" },
-  { label: "Editorial Draft Prepared", state: "current" },
-  { label: "Human Approval", state: "future" },
-  { label: "WordPress Draft", state: "future" }
-] as const;
 
 export function ReviewPage(): JSX.Element {
   const { storyId: routeStoryId } = useParams();
@@ -71,6 +59,9 @@ export function ReviewPage(): JSX.Element {
 
   const draftPackage = useMemo(() => (workspace ? buildDraftPackage(workspace) : null), [workspace]);
   const selectedArticle = workspace?.source_articles.find((article) => article.external_id === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
+  const timeline = workspace?.processing_history ?? [];
+  const draftLabel = workspace?.serbian_draft.status === "not_generated" ? "Draft not generated" :
+    workspace?.serbian_draft.status === "demo_generated" ? "Demo draft (placeholder)" : "Draft available";
 
   if (!storyId) {
     return <Navigate to="/review" replace />;
@@ -122,19 +113,19 @@ export function ReviewPage(): JSX.Element {
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center gap-3">
                   <Badge variant="warning">Editorial Draft</Badge>
-                  <Badge variant="muted">Status: Ready for Human Editing</Badge>
+                  <Badge variant="muted">Status: {workspace.status.replace(/_/g, " ")}</Badge>
                   <Badge variant="muted">Target Language: Serbian</Badge>
                 </div>
                 <h3 className="break-words text-3xl font-bold leading-tight text-white">{draftPackage.headline}</h3>
                 <div className="rounded-2xl border border-[#f5c518]/35 bg-[#f5c518]/10 p-4">
                   <p className="text-lg font-bold text-white">Nothing is published automatically.</p>
-                  <p className="mt-1 text-sm font-semibold text-[#f9edb8]">Human editorial approval is always required.</p>
+                  <p className="mt-1 text-sm font-semibold text-[#f9edb8]">Human approval is required before future WordPress draft creation. This preview does not record approval.</p>
                 </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
                 {[
-                  { label: "Sources", value: workspace.source_count },
+                  { label: "Source articles", value: workspace.source_count },
                   { label: "Editorial importance", value: workspace.editorial_intelligence.importance_score },
                   { label: "Confidence", value: `${workspace.editorial_intelligence.confidence_score}%` }
                 ].map((metric) => (
@@ -149,7 +140,7 @@ export function ReviewPage(): JSX.Element {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-2xl text-white">Editorial Timeline</CardTitle>
+              <CardTitle className="text-2xl text-white">Workspace Processing Status</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
@@ -157,7 +148,7 @@ export function ReviewPage(): JSX.Element {
                   <div
                     key={step.label}
                     className={`rounded-2xl border p-4 ${
-                      step.state === "complete"
+                      step.state === "completed"
                         ? "border-emerald-400/35 bg-emerald-500/12 text-emerald-50"
                         : step.state === "current"
                         ? "border-[#f5c518] bg-[#f5c518] text-[#07173d]"
@@ -165,7 +156,7 @@ export function ReviewPage(): JSX.Element {
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      {step.state === "complete" ? <CheckCircle2 className="h-5 w-5" /> : step.state === "current" ? <CircleDot className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                      {step.state === "completed" ? <CheckCircle2 className="h-5 w-5" /> : step.state === "current" ? <CircleDot className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
                       <p className="text-sm font-semibold">{step.label}</p>
                     </div>
                   </div>
@@ -183,7 +174,7 @@ export function ReviewPage(): JSX.Element {
                 <article className="overflow-hidden rounded-2xl border border-white/20 bg-[#08245a]">
                   <div className="p-5 sm:p-7">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="warning">Ready for Human Editing</Badge>
+                      <Badge variant="warning">{draftLabel}</Badge>
                       <Badge variant="muted">Central Hype WordPress Portal</Badge>
                     </div>
                     <h1 className="mt-4 break-words text-4xl font-extrabold leading-tight text-white">{draftPackage.headline}</h1>
@@ -208,7 +199,7 @@ export function ReviewPage(): JSX.Element {
                         Source attribution
                       </p>
                       <p className="mt-3 text-sm leading-7 text-[#eef4ff]">
-                        Prepared from {workspace.source_count} original source article{workspace.source_count === 1 ? "" : "s"}. Original language material remains available below for human verification.
+                        Includes {workspace.source_count} original source article{workspace.source_count === 1 ? "" : "s"}. Original language material remains available below for human verification.
                       </p>
                     </div>
                   </div>
@@ -278,7 +269,7 @@ export function ReviewPage(): JSX.Element {
           </div>
 
           <NextStepPanel
-            message="Review the editorial draft package and continue to preview the exact WordPress draft payload."
+            message="Inspect the source material and editorial package, then continue to publishing preview."
             ctaLabel="Continue to Publishing Preview"
             onAction={continueToPublishing}
           />

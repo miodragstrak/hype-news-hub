@@ -12,12 +12,13 @@ import { useDemoData, type EditorialDraftPackage } from "../context/DemoDataCont
 const PREPARED_DURING_PROCESSING = "To be prepared during editorial processing";
 
 export function PublishPage(): JSX.Element {
-  const { collectionResult, sources, selectedDraftPackage } = useDemoData();
+  const { collectionResult, selectedDraftPackage } = useDemoData();
   const [isDraftPreviewOpen, setIsDraftPreviewOpen] = useState(false);
 
   const collected = collectionResult?.articles_total ?? 0;
-  const sourcesProcessed = collectionResult?.sources_processed ?? sources.length;
+  const sourcesProcessed = collectionResult?.sources_processed ?? 0;
   const storiesCreated = collectionResult?.stories_total ?? 0;
+  const previewStatus = selectedDraftPackage ? "Editorial Package Preview" : "No Editorial Package Selected";
 
   const summary = [
     { label: "Sources processed", value: sourcesProcessed },
@@ -25,7 +26,7 @@ export function PublishPage(): JSX.Element {
     { label: "Stories created", value: storiesCreated },
     { label: "Publishing destination", value: "Central Hype WordPress Portal" },
     { label: "CMS", value: "WordPress" },
-    { label: "Status", value: "Ready for Draft Creation Preview" }
+    { label: "Status", value: previewStatus }
   ];
 
   const packageRows = selectedDraftPackage
@@ -45,7 +46,7 @@ export function PublishPage(): JSX.Element {
     <section className="space-y-6">
       <header className="space-y-2">
         <h2 className="text-4xl font-bold tracking-tight text-white">Publishing Preview</h2>
-        <p className="text-[#c2d3f5]">Preview the exact editorial package that will later be sent to WordPress as a draft.</p>
+        <p className="text-[#c2d3f5]">Inspect the editorial package for future WordPress draft integration.</p>
         <p className="text-sm text-[#b5c8ed]">No publishing request is made from this preview.</p>
       </header>
 
@@ -53,7 +54,7 @@ export function PublishPage(): JSX.Element {
         <Card className="border-[#f5c518]/45 bg-[#0a285f]">
           <CardHeader>
             <CardDescription>Publishing Package Summary</CardDescription>
-            <CardTitle className="text-3xl text-white">Ready for Draft Creation Preview</CardTitle>
+            <CardTitle className="text-3xl text-white">{previewStatus}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -106,7 +107,7 @@ export function PublishPage(): JSX.Element {
             <CardContent className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
                 <InfoTile label="CMS" value="WordPress" />
-                <InfoTile label="Status" value="Ready for Draft Creation Preview" />
+                <InfoTile label="Status" value={previewStatus} />
                 <InfoTile label="Destination" value="Central Hype WordPress Portal" />
               </div>
 
@@ -284,7 +285,7 @@ function PublishingPackageModal({ isOpen, packageData, onClose }: PublishingPack
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <InfoTile label="Status" value="Ready for Draft Creation Preview" />
+                <InfoTile label="Status" value="Editorial Package Preview" />
                 <InfoTile label="Destination" value="Central Hype WordPress Portal" />
                 <InfoTile label="CMS" value="WordPress" />
               </div>

@@ -33,7 +33,7 @@ function getSourceFlag(name: string): string {
 
 function formatSyncTime(value: string | null): string {
   if (!value) {
-    return "2 min ago";
+    return "Not collected";
   }
 
   const elapsedMs = Date.now() - new Date(value).getTime();
@@ -42,14 +42,14 @@ function formatSyncTime(value: string | null): string {
 }
 
 export function DashboardPage(): JSX.Element {
-  const { sources, sourceError, isLoadingSources, collectNow, isCollecting, collectError, collectionResult, sourceArticleCounts, lastCollectedAt, articles } = useDemoData();
+  const { sources, sourceError, isLoadingSources, collectNow, isCollecting, collectError, collectionResult, lastCollectedAt, articles } = useDemoData();
 
   return (
     <div className="space-y-8">
       <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {sources.map((source, index) => {
           const state = getSourceState(source.wordpress, source.rss);
-          const newArticles = sourceArticleCounts[source.name] ?? 5;
+          const newArticles = articles.filter((article) => article.source_url === source.url).length;
           const flag = getSourceFlag(source.name);
           const latestArticle = [...articles]
             .filter((article) => article.source === source.name)
@@ -111,11 +111,11 @@ export function DashboardPage(): JSX.Element {
         <CardContent className="flex flex-col gap-5 p-8 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-4xl font-bold tracking-tight text-[#0b1f4d]">Collect Latest News</h2>
-            <p className="mt-2 max-w-xl text-[#4d6391]">Launch a full-source collection cycle and activate the AI newsroom pipeline.</p>
+            <p className="mt-2 max-w-xl text-[#4d6391]">Collect current articles and group related source coverage.</p>
           </div>
           <Button size="lg" onClick={() => void collectNow()} disabled={isCollecting}>
             {isCollecting ? <RefreshCw className="mr-2 h-5 w-5 animate-spin" /> : null}
-            {isCollecting ? "AI collects articles..." : "Collect Latest News"}
+            {isCollecting ? "Collecting articles..." : "Collect Latest News"}
           </Button>
         </CardContent>
       </Card>
@@ -126,9 +126,9 @@ export function DashboardPage(): JSX.Element {
             {isLoadingSources && <p className="text-[#4d6391]">Checking source connectivity...</p>}
             {sourceError && <p className="font-medium text-rose-600">{sourceError}</p>}
             {collectError && <p className="font-medium text-rose-600">{collectError}</p>}
-            {collectionResult && (
+            {collectionResult && !isCollecting && !collectError && (
               <p className="font-medium text-emerald-700">
-                Collection complete: {collectionResult.articles_total} articles from {collectionResult.sources_processed} sources.
+                Collection response: {collectionResult.articles_total} articles; {collectionResult.sources_failed} of {collectionResult.sources_processed} sources failed.
               </p>
             )}
             {collectionResult && (

@@ -1,8 +1,9 @@
-import { ArrowLeft, CheckCircle2, Home, Search } from "lucide-react";
+import { ArrowLeft, Home, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { Button } from "../components/ui/button";
+import { DataStatusBanner } from "../components/DataStatusBanner";
 import { useDemoData, type EditorialDraftPackage } from "../context/DemoDataContext";
 import { buildDraftPackage, PREPARED_DURING_PROCESSING } from "../lib/editorialDraft";
 import { getEditorialStoryWorkspace } from "../services/newsService";
@@ -48,6 +49,9 @@ export function PortalPreviewPage(): JSX.Element {
 
   useEffect(() => {
     if (!storyId || selectedDraftPackage?.storyId === storyId) {
+      // Selecting the loaded package cleans up the previous request effect
+      // before its finally callback may run.
+      setIsLoading(false);
       return;
     }
 
@@ -117,6 +121,7 @@ export function PortalPreviewPage(): JSX.Element {
   return (
     <div className="min-h-screen bg-[#f3f6fb] text-[#07173d]">
       <PortalHeader />
+      <div className="mx-auto max-w-7xl px-4 pt-4"><DataStatusBanner /></div>
 
       <main className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8">
         <article className="min-w-0 overflow-hidden bg-white shadow-[0_20px_55px_-42px_rgba(7,23,61,0.75)]">
@@ -182,7 +187,7 @@ export function PortalPreviewPage(): JSX.Element {
 
       <section className="mx-auto w-full max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
         <RelatedStories stories={relatedStories} />
-        <WorkflowCompletePanel storyId={storyId} />
+        <PreviewStatusPanel storyId={storyId} />
       </section>
     </div>
   );
@@ -280,20 +285,11 @@ function StoryTeaser({ story, compact = false }: { story: StorySummary; compact?
   );
 }
 
-function WorkflowCompletePanel({ storyId }: { storyId: string }): JSX.Element {
-  const steps = ["Sources collected", "Related stories merged", "Editorial draft prepared", "Publishing package ready", "Portal preview generated"];
-
+function PreviewStatusPanel({ storyId }: { storyId: string }): JSX.Element {
   return (
     <section className="mt-8 bg-[#07173d] p-5 text-white sm:p-7">
-      <h2 className="text-3xl font-extrabold">Editorial Workflow Complete</h2>
-      <div className="mt-5 grid gap-3 md:grid-cols-5">
-        {steps.map((step) => (
-          <div key={step} className="flex items-center gap-2 border border-white/15 bg-[#0b2a67] p-3 text-sm font-bold">
-            <CheckCircle2 className="h-5 w-5 shrink-0 text-[#f5c518]" />
-            <span>{step}</span>
-          </div>
-        ))}
-      </div>
+      <h2 className="text-3xl font-extrabold">Portal Preview Ready</h2>
+      <p className="mt-4 text-sm text-[#d6e3ff]">Editorial processing and human approval remain separate steps. Opening this preview does not create a WordPress draft.</p>
       <p className="mt-6 text-sm font-bold uppercase text-[#f5c518]">Next milestone:</p>
       <p className="mt-1 text-xl font-extrabold">WordPress Draft Integration</p>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -319,6 +315,7 @@ function PortalEmptyState({ title, message }: { title: string; message: string }
   return (
     <div className="min-h-screen bg-[#f3f6fb] text-[#07173d]">
       <PortalHeader />
+      <div className="mx-auto max-w-7xl px-4 pt-4"><DataStatusBanner /></div>
       <main className="mx-auto flex min-h-[55vh] w-full max-w-3xl items-center px-4 py-10 sm:px-6">
         <section className="w-full bg-white p-7 text-center shadow-[0_20px_55px_-42px_rgba(7,23,61,0.75)]">
           <p className="mx-auto inline-flex rounded-sm bg-[#f5c518] px-3 py-1 text-xs font-extrabold uppercase text-[#07173d]">Editorial Preview</p>

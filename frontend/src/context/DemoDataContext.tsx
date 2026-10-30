@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { collectLatestNews, getDemoCollectArticlesResponse, getDemoEditorialQueueResponse, getDemoStoriesResponse, getDiscoverySources, getEditorialQueue, getStories } from "../services/newsService";
+import { collectLatestNews, getDemoCollectArticlesResponse, getDemoDiscoverySources, getDemoEditorialQueueResponse, getDemoStoriesResponse, getDiscoverySources, getEditorialQueue, getStories, isDemoDataModeEnabled } from "../services/newsService";
 import type { CollectArticlesResponse, DiscoveryResult, EditorialStory, NormalizedArticle, StorySummary } from "../types/news";
 
 export type EditorialDraftSource = {
@@ -28,6 +28,7 @@ export type EditorialDraftPackage = {
 };
 
 type DemoDataContextValue = {
+  isDemoMode: boolean;
   sources: DiscoveryResult[];
   sourceError: string | null;
   isLoadingSources: boolean;
@@ -38,35 +39,35 @@ type DemoDataContextValue = {
   articles: NormalizedArticle[];
   stories: StorySummary[];
   editorialStories: EditorialStory[];
+  storiesError: string | null;
+  editorialError: string | null;
+  isLoadingEditorial: boolean;
   sourceArticleCounts: Record<string, number>;
   selectedDraftPackage: EditorialDraftPackage | null;
   setSelectedDraftPackage: (draftPackage: EditorialDraftPackage | null) => void;
   collectNow: () => Promise<void>;
 };
 
-const FALLBACK_SOURCES: DiscoveryResult[] = [
-  { name: "Hype Serbia", url: "https://hypetv.rs", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null },
-  { name: "Hype Croatia", url: "https://hypetv.hr", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null },
-  { name: "Hype Bosnia", url: "https://hypebih.ba", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null },
-  { name: "Hype Slovenia", url: "https://hypetv.si", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null },
-  { name: "Hype Macedonia", url: "https://hypetv.mk", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null },
-  { name: "Hype Production", url: "https://www.hypeproduction.rs", wordpress: true, rss: false, preferred: "wordpress", posts_endpoint: null, rss_endpoint: null, sample_article: null }
-];
-
 const DemoDataContext = createContext<DemoDataContextValue | null>(null);
 
 export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Element {
-  const [sources, setSources] = useState<DiscoveryResult[]>(FALLBACK_SOURCES);
+  const isDemoMode = isDemoDataModeEnabled();
+  const [sources, setSources] = useState<DiscoveryResult[]>(() => isDemoMode ? getDemoDiscoverySources() : []);
   const [sourceError, setSourceError] = useState<string | null>(null);
   const [isLoadingSources, setIsLoadingSources] = useState(true);
 
-  const [collectionResult, setCollectionResult] = useState<CollectArticlesResponse | null>(() => getDemoCollectArticlesResponse());
+  const [collectionResult, setCollectionResult] = useState<CollectArticlesResponse | null>(() => isDemoMode ? getDemoCollectArticlesResponse() : null);
   const [isCollecting, setIsCollecting] = useState(false);
   const [collectError, setCollectError] = useState<string | null>(null);
-  const [lastCollectedAt, setLastCollectedAt] = useState<string | null>(() => new Date().toISOString());
-  const [stories, setStories] = useState<StorySummary[]>(() => getDemoStoriesResponse().stories);
-  const [editorialStories, setEditorialStories] = useState<EditorialStory[]>(() => getDemoEditorialQueueResponse().stories);
+  const [lastCollectedAt, setLastCollectedAt] = useState<string | null>(null);
+  const [stories, setStories] = useState<StorySummary[]>(() => isDemoMode ? getDemoStoriesResponse().stories : []);
+  const [editorialStories, setEditorialStories] = useState<EditorialStory[]>(() => isDemoMode ? getDemoEditorialQueueResponse().stories : []);
+  const [storiesError, setStoriesError] = useState<string | null>(null);
+  const [editorialError, setEditorialError] = useState<string | null>(null);
+  const [isLoadingEditorial, setIsLoadingEditorial] = useState(true);
   const [selectedDraftPackage, setSelectedDraftPackage] = useState<EditorialDraftPackage | null>(null);
+  const collectionVersion = useRef(0);
+  const collectionInFlight = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -74,8 +75,8 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
     async function loadSources(): Promise<void> {
       try {
         const discovered = await getDiscoverySources();
-        if (isMounted && discovered.length > 0) {
-          setSources(discovered.slice(0, 6));
+        if (isMounted) {
+          setSources(discovered);
         }
       } catch (error) {
         if (isMounted) {
@@ -97,16 +98,21 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
 
   useEffect(() => {
     let isMounted = true;
+    const version = collectionVersion.current;
 
     async function loadEditorialQueue(): Promise<void> {
       try {
         const response = await getEditorialQueue();
-        if (isMounted) {
+        if (isMounted && version === collectionVersion.current) {
           setEditorialStories(response.stories);
         }
-      } catch {
-        if (isMounted) {
-          setEditorialStories([]);
+      } catch (error) {
+        if (isMounted && version === collectionVersion.current) {
+          setEditorialError(error instanceof Error ? error.message : "Unable to load editorial queue.");
+        }
+      } finally {
+        if (isMounted && version === collectionVersion.current) {
+          setIsLoadingEditorial(false);
         }
       }
     }
@@ -120,16 +126,17 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
 
   useEffect(() => {
     let isMounted = true;
+    const version = collectionVersion.current;
 
     async function loadStories(): Promise<void> {
       try {
         const response = await getStories();
-        if (isMounted) {
+        if (isMounted && version === collectionVersion.current) {
           setStories(response.stories);
         }
-      } catch {
-        if (isMounted) {
-          setStories([]);
+      } catch (error) {
+        if (isMounted && version === collectionVersion.current) {
+          setStoriesError(error instanceof Error ? error.message : "Unable to load stories.");
         }
       }
     }
@@ -141,6 +148,48 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
     };
   }, []);
 
+  const collectNow = useCallback(async (): Promise<void> => {
+    if (collectionInFlight.current) return;
+    collectionInFlight.current = true;
+    setCollectError(null);
+    setIsCollecting(true);
+    try {
+      const data = await collectLatestNews();
+      setCollectionResult(data);
+      if (data.sources_processed === 0) {
+        setCollectError("No sources were processed. Previous stories are unchanged.");
+        return;
+      }
+      if (data.sources_processed > 0 && data.sources_failed === data.sources_processed) {
+        setCollectError("Collection failed for all sources. No new articles were collected; previous stories are unchanged.");
+        return;
+      }
+
+      // /collect already contains the summaries for this run; do not replace
+      // them with a second, potentially different /stories snapshot.
+      collectionVersion.current += 1;
+      setStories(data.stories);
+      setStoriesError(null);
+      setSelectedDraftPackage(null);
+      setLastCollectedAt(new Date().toISOString());
+      setEditorialStories([]);
+      setEditorialError(null);
+      setIsLoadingEditorial(true);
+      try {
+        const queue = await getEditorialQueue();
+        setEditorialStories(queue.stories);
+      } catch (error) {
+        setEditorialError(error instanceof Error ? error.message : "Unable to load editorial queue.");
+      }
+    } catch (error) {
+      setCollectError(error instanceof Error ? error.message : "Unable to collect articles.");
+    } finally {
+      setIsLoadingEditorial(false);
+      setIsCollecting(false);
+      collectionInFlight.current = false;
+    }
+  }, []);
+
   const sourceArticleCounts = useMemo(() => {
     return (collectionResult?.articles ?? []).reduce<Record<string, number>>((acc, article) => {
       acc[article.source] = (acc[article.source] ?? 0) + 1;
@@ -150,6 +199,7 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
 
   const value = useMemo<DemoDataContextValue>(
     () => ({
+      isDemoMode,
       sources,
       sourceError,
       isLoadingSources,
@@ -160,40 +210,15 @@ export function DemoDataProvider({ children }: { children: ReactNode }): JSX.Ele
       articles: collectionResult?.articles ?? [],
       stories,
       editorialStories,
+      storiesError,
+      editorialError,
+      isLoadingEditorial,
       sourceArticleCounts,
       selectedDraftPackage,
       setSelectedDraftPackage,
-      collectNow: async () => {
-        setCollectError(null);
-        setIsCollecting(true);
-        try {
-          const data = await collectLatestNews();
-          setCollectionResult(data);
-          setStories(data.stories);
-
-          try {
-            const storyResponse = await getStories();
-            setStories(storyResponse.stories);
-          } catch {
-            // Keep story data from /collect if /stories fetch fails.
-          }
-
-          try {
-            const editorialResponse = await getEditorialQueue();
-            setEditorialStories(editorialResponse.stories);
-          } catch {
-            setEditorialStories([]);
-          }
-
-          setLastCollectedAt(new Date().toISOString());
-        } catch (error) {
-          setCollectError(error instanceof Error ? error.message : "Unknown collection error");
-        } finally {
-          setIsCollecting(false);
-        }
-      }
+      collectNow,
     }),
-    [collectionResult, collectError, editorialStories, isCollecting, isLoadingSources, lastCollectedAt, selectedDraftPackage, sourceArticleCounts, sourceError, sources, stories]
+    [collectNow, collectionResult, collectError, editorialError, editorialStories, isCollecting, isDemoMode, isLoadingEditorial, isLoadingSources, lastCollectedAt, selectedDraftPackage, sourceArticleCounts, sourceError, sources, stories, storiesError]
   );
 
   return <DemoDataContext.Provider value={value}>{children}</DemoDataContext.Provider>;

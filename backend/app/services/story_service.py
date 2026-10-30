@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.schemas.article import NormalizedArticle
 from app.schemas.story import StoriesResponse, Story, StorySummary
 from app.services.story_matcher import similarity_score
+from app.services.timestamps import published_sort_key
 
 _DEFAULT_MERGE_THRESHOLD = max(0, min(100, settings.story_merge_threshold))
 _latest_stories: list[Story] = []
@@ -20,7 +21,7 @@ class StoryBuildResult:
 
 
 def _sort_stories(stories: Iterable[Story]) -> list[Story]:
-    return sorted(stories, key=lambda story: story.published_at or "", reverse=True)
+    return sorted(stories, key=lambda story: published_sort_key(story.published_at), reverse=True)
 
 
 def _merge_into_story(story: Story, article: NormalizedArticle, match_score: int) -> Story:
@@ -88,7 +89,8 @@ def build_stories_from_articles(
                 sources=[article.source],
                 published_at=article.published_at,
                 categories=sorted({*article.categories}),
-                similarity_score=100,
+                # No pairwise match has been observed for a single article.
+                similarity_score=0,
                 status="collected",
                 language=article.language,
             )
