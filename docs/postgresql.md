@@ -1,4 +1,4 @@
-# PostgreSQL foundation, collection and editorial security — Sprints 15A/15B/17A
+# PostgreSQL foundation, collection and editorial security — Sprints 15A/15B/17A/17B
 
 ## Audited starting point and architecture
 
@@ -101,8 +101,11 @@ zero. Existing stories are not automatically split/merged after headline edits.
 The collection schema is separate from the five private editorial tables added
 in Sprint 17A. See [editorial foundation](editorial-foundation.md) for immutable
 draft versions, frozen sources, decisions and events. The authenticated frontend
-workflow is implemented; production identity activation, AI and WordPress delivery
+workflow is implemented; production identity activation, production AI activation and WordPress delivery
 remain separate work. Public demo overrides remain in memory.
+Sprint 17B.1A adds [persisted mock suggestions](ai-suggestions.md), separate from
+editorial versions and approvals. Optional Gemini translation is implemented;
+production AI activation remains disabled.
 
 ### Temporal eligibility for new memberships
 
@@ -257,7 +260,7 @@ and `POSTGRES_RUNTIME_PASSWORD` to the backend's connection credentials.
 
 ## Trusted application schema — Sprint 17A.4.1
 
-All twelve SQLAlchemy tables inherit `MetaData(schema="public")`. ORM relationship
+All fourteen SQLAlchemy tables inherit `MetaData(schema="public")`. ORM relationship
 loads, Core inserts/updates, optimistic-concurrency predicates and collection
 queries therefore name `public.<table>` explicitly. The schema is a fixed code
 policy, not a request, environment or session setting. Readable same-named tables
@@ -316,6 +319,8 @@ The role receives CONNECT, public schema USAGE and EXECUTE on
 | `news_sources`, `collected_articles`, `article_identities`, `stories`, `story_articles`, `collection_runs`, `collection_source_results` | SELECT, INSERT, UPDATE |
 | `editorial_drafts` | SELECT, INSERT, UPDATE |
 | `editorial_draft_versions`, `editorial_version_sources`, `editorial_decisions`, `editorial_events` | SELECT, INSERT |
+| `ai_processing_runs` | SELECT, INSERT, UPDATE |
+| `ai_processing_events` | SELECT, INSERT |
 
 Normal collection, recollection, identity updates, locking, recovery and editorial
 commands need no DELETE, TRUNCATE, REFERENCES or TRIGGER. Sprint 17A.4 revokes
@@ -428,7 +433,7 @@ docker compose --profile tools run --rm migrate alembic check
 docker compose --profile tools run --rm migrate alembic history
 ```
 
-The three revisions run in order: `20261030_01 → 20261030_02 → 20261030_03`.
+The six revisions run in order: `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06`.
 The initial revision is `20261030_01`; Sprint 15B adds `20261030_02`, which
 backfills literal and normalized aliases and replaces unbounded text uniqueness
 with generated keys. Existing UUIDs and original source/article URLs are
@@ -451,6 +456,27 @@ guards. Upgrading a populated 15B database preserves collection history; downgra
 03 to 02 **deletes all editorial data**. Back up/export first and require an
 explicit operator decision. Sprint 17A.4 changes provisioning only, with no new
 migration and no edits to revisions 01/02/03.
+
+Sprint 17B.1A adds `20261101_04`: two private AI request/event tables with embedded
+immutable single-source evidence and sealed mock output. Existing collection and
+editorial data are unchanged. After upgrading, re-provision runtime roles for the
+new allowlists before using AI routes. Downgrading 04 to 03 **deletes all AI request,
+evidence, suggestion and event data**; export/back up first. See [AI operations](ai-suggestions.md).
+
+Sprint 17B.1B adds `20261101_05` to the same two AI tables: accepted-version FKs,
+immutable command receipts and exact-evidence/paired-audit guards. It reuses the
+editorial version writer and existing runtime grants; it adds no approval state or
+live provider. Existing revision 04 is unchanged. Upgrade from populated 04 preserves
+prior runs and editorial/collection data. Downgrade 05 to 04 refuses accepted runs
+rather than deleting immutable receipts: obtain a reviewed backup/retention plan.
+Owner maintenance must include referencing AI tables when truncating editorial
+history; application runtime still has no DELETE/TRUNCATE permission.
+
+Sprint 17B.1C adds `20261101_06`: a bounded, immutable processing-metadata column
+and safe provider error codes on the same AI tables. Gemini is optional and
+disabled by default. Prior migrations, collection/editorial history and runtime
+grants are unchanged. Downgrade refuses non-mock/provider-accounting records rather
+than dropping provenance. See [Gemini configuration and live-test gates](gemini-provider.md).
 
 Never rewrite, stamp over or replay an already-applied revision. Use a new reviewed
 migration for future changes to existing datasets; recreate only disposable test

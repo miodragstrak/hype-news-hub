@@ -58,7 +58,7 @@ class TrustedSchemaTests(PersistentCollectionCase):
             for schema in self.schemas:
                 connection.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
             connection.execute(text("TRUNCATE TABLE " + ", ".join("public." + t.name for t in Base.metadata.sorted_tables
-                if t.name.startswith("editorial_"))))
+                if t.name.startswith(("editorial_", "ai_processing_")))))
         super().tearDown()
 
     def new_schema(self, name=None):

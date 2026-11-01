@@ -10,6 +10,7 @@ from app.api.routes.editorial_commands import story_router as editorial_sources_
 from app.api.routes.stories import router as stories_router
 from app.api.routes.system import router as system_router
 from app.api.routes.wordpress_connector import router as wordpress_connector_router
+from app.api.routes.ai_processing import router as ai_processing_router
 
 api_router = APIRouter()
 api_router.include_router(system_router)
@@ -22,3 +23,4 @@ api_router.include_router(editorial_commands_router)
 api_router.include_router(editorial_sources_router)
 api_router.include_router(stories_router)
 api_router.include_router(wordpress_connector_router)
+api_router.include_router(ai_processing_router)

@@ -2,7 +2,7 @@
 
 The existing modular monolith now supports manual PostgreSQL editorial work.
 The [editorial frontend](editorial-frontend.md) supports manual editing, version
-history, review decisions and version-pinned approved preview. AI providers,
+history, review decisions and version-pinned approved preview. Production AI activation,
 WordPress delivery and production identity activation remain separate work.
 No production credentials or deployment settings are included. Memory mode remains the
 default and cannot execute these commands. Public collection/demo projections
@@ -11,9 +11,16 @@ do not join private tables or acquire new response fields.
 ## Security and preparation
 
 Use the existing migration/provisioning commands in [PostgreSQL operations](postgresql.md).
-The migration chain is `20261030_01 → 20261030_02 → 20261030_03`; revision `20261030_03` supports the
+The migration chain is `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06`; revision `20261030_03` supports the
 workflow, source snapshots, append-only history and command receipts. Revisions
 01/02/03 are unchanged by Sprints 17A.4/17A.4.1; these corrections need no new migration.
+Revision 04 adds [private mock suggestions](ai-suggestions.md); 05 adds explicit
+Editor acceptance into a new AI-origin editing version, with frozen evidence and
+paired audit. Acceptance never approves content. Revision 06 adds optional
+[Gemini processing](gemini-provider.md) and immutable accounting; live use is
+disabled by default. One controlled local Gemini generation was reported successful
+after acceptance; this does not activate production or establish editorial quality.
+Existing 04 is unchanged; 05 adds no table grants. Re-provision when adding AI tables.
 Before PostgreSQL startup, re-provision existing runtime logins to reset table and
 column ACLs to the documented allowlists. PUBLIC grants or dependent grants issued
 by the runtime login require administrator review first; provisioning never

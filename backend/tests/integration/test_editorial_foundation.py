@@ -29,7 +29,8 @@ class EditorialFoundationTests(PersistentCollectionCase):
         # Owner maintenance of the explicitly isolated, initially empty test DB.
         # No CASCADE: collection records are handled by the existing fixture.
         with self.engine.begin() as connection:
-            connection.execute(text("TRUNCATE TABLE " + ", ".join("public." + table for table in EDITORIAL_TABLES)))
+            connection.execute(text("TRUNCATE TABLE " + ", ".join("public." + table for table in
+                ("ai_processing_events", "ai_processing_runs", *EDITORIAL_TABLES))))
         super().tearDown()
 
     def source_snapshot(self, draft_id, version_number, article, **overrides):

@@ -4,7 +4,7 @@ Sprint 17A.1 added security boundaries and storage. Sprint 17A.2 adds authentica
 PostgreSQL editorial commands and reads; see [workflow contracts](editorial-workflow.md).
 Sprint 17A.3 implements the authenticated frontend editor, version history, review
 decisions and approved preview; see [frontend integration](editorial-frontend.md).
-Production identity activation, AI generation and WordPress delivery remain separate work.
+Production identity activation, production AI activation and WordPress delivery remain separate work.
 No AI/WordPress credentials, production identity credentials, dependencies, Render
 settings, Vercel settings or Docker deployment definitions are added.
 
@@ -138,7 +138,17 @@ instruction channel is added. Source text remains untrusted, even inside a snaps
 
 ## Migrations and runtime security
 
-The migration chain is `20261030_01 → 20261030_02 → 20261030_03`.
+The migration chain is `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06`.
+Sprint 17B.1A's [mock suggestion foundation](ai-suggestions.md) adds revision 04;
+17B.1B adds 05 for explicit human acceptance through the shared editorial writer,
+exact frozen evidence and paired receipts. Acceptance always enters editing,
+invalidating effective approval for a replaced version. Editorial tables/approval
+rules remain unchanged. Re-provision runtime roles when first adding the AI tables;
+Gemini is implemented but disabled by default, with no committed credentials.
+One controlled local generation was reported successful after acceptance; production
+activation remains separate. Revision 06 adds immutable usage/model metadata and error codes;
+see [Gemini operations](gemini-provider.md). Downgrade 05 refuses accepted runs;
+06 refuses Gemini/accounting records, preserving provenance in both cases.
 Migration `20261030_03_editorial_foundation.py` follows `20261030_02`. Existing
 migrations and collection tables are unchanged. It creates the five tables,
 indexes, hash function and guards; it does not backfill editorial records or infer
@@ -159,6 +169,8 @@ direct table **and column** ACLs, then grants these explicit allowlists:
 | `news_sources`, `collected_articles`, `article_identities`, `stories`, `story_articles`, `collection_runs`, `collection_source_results` | SELECT, INSERT, UPDATE |
 | `editorial_drafts` | SELECT, INSERT, UPDATE |
 | `editorial_draft_versions`, `editorial_version_sources`, `editorial_decisions`, `editorial_events` | SELECT, INSERT |
+| `ai_processing_runs` | SELECT, INSERT, UPDATE |
+| `ai_processing_events` | SELECT, INSERT |
 
 No DELETE, TRUNCATE, REFERENCES, TRIGGER or grant options are allowed, including
 column-level REFERENCES and historical UPDATE. CONNECT, schema USAGE and the two

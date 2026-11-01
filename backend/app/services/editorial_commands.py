@@ -112,9 +112,9 @@ class EditorialCommands:
             raise EditorialCommandError(422, "Selected source input exceeds the 4 MiB workspace limit.")
         return snapshots
 
-    def add_version(self, session, draft, payload, number, snapshots):
+    def add_version(self, session, draft, payload, number, snapshots, *, origin="manual"):
         version = EditorialDraftVersion(draft_id=draft.id, version_number=number,
-            payload=payload.model_dump(mode="json"), source_count=len(snapshots), origin="manual", **self.actor)
+            payload=payload.model_dump(mode="json"), source_count=len(snapshots), origin=origin, **self.actor)
         session.add(version)
         session.flush()
         for values in snapshots:
@@ -133,7 +133,8 @@ class EditorialCommands:
             conflict("Stale editorial revision. Refresh before saving or deciding.")
         session.refresh(draft)
 
-    def record(self, session, draft, version, command, request_hash, action, previous, decision=None):
+    def record(self, session, draft, version, command, request_hash, action, previous, decision=None,
+               *, ai_provenance=None, occurred_at=None):
         result = CommandResult(command_id=command.command_id, draft_id=draft.id, revision=draft.revision,
             status=draft.status, version_number=version.version_number, content_hash=version.content_hash)
         details = {"result": result.model_dump(mode="json")}
@@ -141,38 +142,67 @@ class EditorialCommands:
             details["reason"] = command.reason
         if decision:
             details["decision_id"] = str(decision.id)
+        if ai_provenance is not None:
+            details["ai_provenance"] = ai_provenance
         session.add(EditorialEvent(draft_id=draft.id, version_number=version.version_number,
             event_type="draft." + action, from_status=previous, to_status=draft.status,
             command_id=command.command_id, request_hash=request_hash, details=details,
-            occurred_at=func.pg_catalog.clock_timestamp(), **self.actor))
+            occurred_at=occurred_at if occurred_at is not None else func.pg_catalog.clock_timestamp(), **self.actor))
         session.flush()
         return result
+
+    def lock_workspace(self, session, story_id, target_locale):
+        # Shared by manual creation and AI acceptance across application instances.
+        key = int.from_bytes(hashlib.sha256(f"editorial:{story_id}:{target_locale}".encode()).digest()[:8], "big", signed=True)
+        session.execute(text("SELECT pg_catalog.pg_advisory_xact_lock(:key)"), {"key": key})
+        return session.scalar(select(EditorialDraft).where(EditorialDraft.story_id == story_id,
+            EditorialDraft.target_locale == target_locale).with_for_update())
+
+    def write_payload(self, session, draft, command, request_hash, *, story_id=None, target_locale="sr-Latn",
+                      frozen_sources=None, origin="manual", action=None, ai_provenance=None, occurred_at=None):
+        """One version-writing path for manual commands and trusted AI acceptance.
+
+        Callers own the transaction, workspace lock and idempotency check. Frozen
+        sources/provenance/origin are internal arguments, never public command fields.
+        """
+        previous = draft.status if draft else None
+        if draft is None:
+            if command.expected_revision != 0:
+                conflict("Creating a workspace requires expected_revision zero.")
+            if session.get(Story, story_id) is None:
+                raise EditorialCommandError(404, "Persisted story not found.")
+            draft = EditorialDraft(story_id=story_id, target_locale=target_locale, current_version_number=1, **self.actor)
+            session.add(draft)
+            session.flush()
+            number = 1
+        else:
+            if draft.revision != command.expected_revision:
+                conflict("Stale editorial revision. Refresh before saving or deciding.")
+            if previous not in {"editing", "changes_requested", "approved"}:
+                conflict("Reopen rejected drafts before editing; submitted drafts require a review decision.")
+            current = self.current(session, draft)
+            if origin == "manual" and current and current.payload == command.payload.model_dump(mode="json"):
+                raise EditorialCommandError(422, "Payload is unchanged; no revision was created.")
+            number = (draft.current_version_number or 0) + 1
+        snapshots = frozen_sources if frozen_sources is not None else self.snapshots(session, draft, command.payload)
+        version = self.add_version(session, draft, command.payload, number, snapshots, origin=origin)
+        if previous is not None:
+            self.cas(session, draft, command, "editing", number)
+        return self.record(session, draft, version, command, request_hash,
+            action or ("create" if previous is None else "save"), previous,
+            ai_provenance=ai_provenance, occurred_at=occurred_at)
 
     def create(self, command):
         request_hash = self.request_hash("create", None, command)
         with self.transaction() as session:
-            # Separate processes serialize first creation without granting UPDATE
-            # on collection rows or modifying any story/article history.
-            key = int.from_bytes(hashlib.sha256(f"editorial:{command.story_id}:{command.target_locale}".encode()).digest()[:8], "big", signed=True)
-            session.execute(text("SELECT pg_catalog.pg_advisory_xact_lock(:key)"), {"key": key})
-            draft = session.scalar(select(EditorialDraft).where(EditorialDraft.story_id == command.story_id,
-                EditorialDraft.target_locale == command.target_locale).with_for_update())
+            draft = self.lock_workspace(session, command.story_id, command.target_locale)
             if draft:
                 result = self.replay(session, draft, command, request_hash)
                 if result:
                     return result
                 conflict("A workspace already exists for this story and locale.")
-            if session.get(Story, command.story_id) is None:
-                raise EditorialCommandError(404, "Persisted story not found.")
-            draft = EditorialDraft(story_id=command.story_id, target_locale=command.target_locale,
-                current_version_number=1, **self.actor)
-            session.add(draft)
-            session.flush()
-            snapshots = self.snapshots(session, draft, command.payload)
-            version = self.add_version(session, draft, command.payload, 1, snapshots)
-            # The initial INSERT (expected revision zero) creates revision one.
-            # Its head FK is deferred until the version/snapshots are complete.
-            return self.record(session, draft, version, command, request_hash, "create", None)
+            return self.write_payload(session, None, command, request_hash, story_id=command.story_id,
+                target_locale=command.target_locale)
 
     def execute(self, draft_id, action, command):
         request_hash = self.request_hash(action, draft_id, command)
@@ -189,13 +219,7 @@ class EditorialCommands:
             version = self.current(session, draft)
             decision = None
             if action == "save":
-                if previous not in {"editing", "changes_requested", "approved"}:
-                    conflict("Reopen rejected drafts before editing; submitted drafts require a review decision.")
-                if version and version.payload == command.payload.model_dump(mode="json"):
-                    raise EditorialCommandError(422, "Payload is unchanged; no revision was created.")
-                snapshots = self.snapshots(session, draft, command.payload)
-                version = self.add_version(session, draft, command.payload, (draft.current_version_number or 0) + 1, snapshots)
-                target = "editing"
+                return self.write_payload(session, draft, command, request_hash)
             else:
                 if version is None or (version.version_number, version.content_hash) != (command.version_number, command.content_hash):
                     conflict("Command must reference this draft's exact current version and content hash.")

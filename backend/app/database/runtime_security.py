@@ -21,6 +21,8 @@ RUNTIME_PRIVILEGE_ALLOWLIST = {
     **{table: ("SELECT", "INSERT", "UPDATE") for table in RUNTIME_TABLES},
     "editorial_drafts": ("SELECT", "INSERT", "UPDATE"),
     **{table: ("SELECT", "INSERT") for table in EDITORIAL_HISTORY_TABLES},
+    "ai_processing_runs": ("SELECT", "INSERT", "UPDATE"),
+    "ai_processing_events": ("SELECT", "INSERT"),
 }
 TABLE_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 COLUMN_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "REFERENCES")

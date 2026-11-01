@@ -55,7 +55,7 @@ class DatabaseConfigurationTests(unittest.TestCase):
         from sqlalchemy.dialects.postgresql import dialect
         from app import models
         from app.database.base import Base
-        self.assertEqual(len(Base.metadata.tables), 12)
+        self.assertEqual(len(Base.metadata.tables), 14)
         for table in Base.metadata.sorted_tables:
             with self.subTest(table=table.name):
                 self.assertEqual(table.schema, "public")

@@ -38,7 +38,7 @@ class EditorialCommandTests(PersistentCollectionCase):
         if "engine" in self.private_app.state.news_repository.__dict__:
             self.private_app.state.news_repository.engine.dispose()
         with self.engine.begin() as conn:
-            conn.execute(text("TRUNCATE TABLE " + ", ".join(("editorial_drafts", *EDITORIAL_HISTORY_TABLES))))
+            conn.execute(text("TRUNCATE TABLE " + ", ".join(("ai_processing_events", "ai_processing_runs", "editorial_drafts", *EDITORIAL_HISTORY_TABLES))))
         super().tearDown()
 
     def headers(self, role="editor"):

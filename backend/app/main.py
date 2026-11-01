@@ -10,9 +10,12 @@ from app.api.editorial_body_limit import EditorialBodyLimit, editorial_validatio
 from app.core.config import Settings, settings
 from app.core.editorial_security import EditorialIdentityVerifier, UnconfiguredEditorialIdentityVerifier
 from app.repositories.news_repository import CollectionBusy, PostgresNewsRepository, STORAGE_HEADERS, StorageUnavailable
+from app.services.ai_provider import MockSuggestionProvider, SuggestionProvider
+from app.services.gemini_provider import GeminiProvider
 
 
-def create_app(app_settings: Settings | None = None, *, editorial_identity_verifier: EditorialIdentityVerifier | None = None) -> FastAPI:
+def create_app(app_settings: Settings | None = None, *, editorial_identity_verifier: EditorialIdentityVerifier | None = None,
+               ai_provider: SuggestionProvider | None = None) -> FastAPI:
     config = app_settings if app_settings is not None else settings
 
     @asynccontextmanager
@@ -30,6 +33,9 @@ def create_app(app_settings: Settings | None = None, *, editorial_identity_verif
         editorial_identity_verifier if editorial_identity_verifier is not None else UnconfiguredEditorialIdentityVerifier()
     )
     application.state.news_repository = PostgresNewsRepository(config) if config.news_storage_backend == "postgres" else None
+    application.state.ai_provider = ai_provider if ai_provider is not None else (
+        MockSuggestionProvider() if config.ai_processing_provider == "mock" else
+        GeminiProvider(config) if config.ai_processing_provider == "gemini" else None)
     allowed_origins = [origin.strip() for origin in config.backend_cors_origins.split(",") if origin.strip()]
 
     application.add_middleware(EditorialBodyLimit)

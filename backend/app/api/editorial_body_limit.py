@@ -75,6 +75,7 @@ class EditorialBodyLimit:
         path = scope.get("path", "")
         if scope["type"] != "http" or scope.get("method") != "POST" or not (
             path == "/api/editorial/drafts" or path.startswith("/api/editorial/drafts/")
+            or path == "/api/editorial/ai/suggestions" or path.startswith("/api/editorial/ai/suggestions/")
         ):
             return await self.app(scope, receive, send)
         body = bytearray()

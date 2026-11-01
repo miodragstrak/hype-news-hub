@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     story_merge_threshold: int = 72
     story_match_max_gap_hours: float = Field(default=48, gt=0, allow_inf_nan=False)
     news_storage_backend: Literal["memory", "postgres"] = "memory"
+    ai_processing_provider: Literal["disabled", "mock", "gemini"] = "disabled"
+    ai_processing_timeout_seconds: float = Field(default=5, gt=0, le=30, allow_inf_nan=False)
+    gemini_api_key: SecretStr = SecretStr("")
+    # No model default: choose an available text model explicitly, after review.
+    gemini_model: str = ""
+    gemini_max_input_tokens: int = Field(default=4096, ge=1, le=32768)
+    gemini_max_output_tokens: int = Field(default=2048, ge=1, le=8192)
+    gemini_safe_retries: int = Field(default=1, ge=0, le=1)
 
     postgres_host: str = "localhost"
     postgres_port: int = Field(default=5432, ge=1, le=65535)
