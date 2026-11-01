@@ -238,19 +238,18 @@ class PersistentCollectionTests(PersistentCollectionCase):
             self.assertEqual(previous.source_results[0].status, "failed")
         self.assertEqual(self.count(CollectedArticle), 1)
 
-    def test_runtime_role_can_crud_but_cannot_ddl_truncate_or_read_migration_table(self):
+    def test_runtime_can_collect_but_cannot_delete_ddl_truncate_or_read_migration_table(self):
         self.assertEqual(self.collect([source(posts=[post()])]).status_code, 200)
         with self.repository.engine.begin() as connection:
             assert_runtime_role(connection)
         for statement in ("CREATE TABLE forbidden (id integer)", "ALTER TABLE stories ADD COLUMN forbidden text",
                           "DROP TABLE stories CASCADE", "TRUNCATE stories CASCADE", "CREATE ROLE forbidden",
-                          "SELECT * FROM alembic_version"):
+                          "SELECT * FROM alembic_version", "DELETE FROM stories WHERE false"):
             with self.subTest(statement=statement), self.assertRaises(SQLAlchemyError):
                 with self.repository.engine.begin() as connection:
                     connection.execute(text(statement))
         with self.repository.engine.begin() as connection:
             connection.execute(text("UPDATE stories SET headline = headline"))
-            connection.execute(text("DELETE FROM stories WHERE false"))
 
     def test_schema_owner_credentials_are_rejected_by_api(self):
         application = create_app(Settings(_env_file=None, news_storage_backend="postgres"))

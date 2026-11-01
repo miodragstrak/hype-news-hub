@@ -3,10 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
+import { EditorialAccessBanner } from "../components/EditorialAccessBanner";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { useDemoData } from "../context/DemoDataContext";
-import { buildDraftPackage, flagLabel, languageLabel, PREPARED_DURING_PROCESSING } from "../lib/editorialDraft";
+import { buildDraftPackage, flagLabel, languageLabel, PREPARED_DURING_PROCESSING, publicSourceKey } from "../lib/editorialDraft";
 import { getEditorialStoryWorkspace } from "../services/newsService";
 import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
 
@@ -37,7 +38,7 @@ export function ReviewPage(): JSX.Element {
         }
 
         setWorkspace(response);
-        setSelectedArticleId(response.source_articles[0]?.external_id ?? null);
+        setSelectedArticleId(response.source_articles[0] ? publicSourceKey(response.source_articles[0]) : null);
       })
       .catch((fetchError) => {
         if (!active) {
@@ -58,7 +59,7 @@ export function ReviewPage(): JSX.Element {
   }, [storyId]);
 
   const draftPackage = useMemo(() => (workspace ? buildDraftPackage(workspace) : null), [workspace]);
-  const selectedArticle = workspace?.source_articles.find((article) => article.external_id === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
+  const selectedArticle = workspace?.source_articles.find((article) => publicSourceKey(article) === selectedArticleId) ?? workspace?.source_articles[0] ?? null;
   const timeline = workspace?.processing_history ?? [];
   const draftLabel = workspace?.serbian_draft.status === "not_generated" ? "Draft not generated" :
     workspace?.serbian_draft.status === "demo_generated" ? "Demo draft (placeholder)" : "Draft available";
@@ -87,6 +88,8 @@ export function ReviewPage(): JSX.Element {
           Back to Queue
         </Link>
       </div>
+
+      <EditorialAccessBanner storyId={storyId} />
 
       {isLoading ? (
         <Card>
@@ -244,12 +247,12 @@ export function ReviewPage(): JSX.Element {
                 <CardContent className="space-y-4">
                   <div className="grid gap-3">
                     {workspace.source_articles.map((article) => {
-                      const isSelected = article.external_id === selectedArticle?.external_id;
+                      const isSelected = selectedArticle ? publicSourceKey(article) === publicSourceKey(selectedArticle) : false;
                       return (
                         <button
-                          key={article.external_id}
+                          key={publicSourceKey(article)}
                           type="button"
-                          onClick={() => setSelectedArticleId(article.external_id)}
+                          onClick={() => setSelectedArticleId(publicSourceKey(article))}
                           className={`rounded-2xl border p-4 text-left transition ${
                             isSelected ? "border-[#f5c518] bg-[#12357a]" : "border-white/20 bg-[#08245a] hover:border-white/35"
                           }`}

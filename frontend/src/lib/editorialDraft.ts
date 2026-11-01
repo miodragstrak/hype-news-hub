@@ -1,5 +1,9 @@
 import type { EditorialDraftPackage } from "../context/DemoDataContext";
-import type { EditorialStoryWorkspace } from "../types/news";
+import type { EditorialStoryWorkspace, SourceArticle } from "../types/news";
+
+export function publicSourceKey(article: Pick<SourceArticle, "source_url" | "external_id" | "url">): string {
+  return JSON.stringify([article.source_url, article.url, article.external_id]);
+}
 
 export const PREPARED_DURING_PROCESSING = "To be prepared during editorial processing";
 export const FUTURE_ARTICLE_BODY = "The final Serbian editorial article will appear here after language processing and editorial preparation.";
@@ -67,7 +71,7 @@ export function buildDraftPackage(workspace: EditorialStoryWorkspace): Editorial
     seoTitle: headline === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : `${headline} | Hype World News`,
     seoDescription: excerpt === PREPARED_DURING_PROCESSING ? PREPARED_DURING_PROCESSING : excerpt.slice(0, 156),
     sourcesUsed: workspace.source_articles.map((article) => ({
-      id: article.external_id,
+      id: publicSourceKey(article),
       countryFlag: flagLabel(article.country),
       sourceName: article.source,
       originalLanguage: languageLabel(article.language),

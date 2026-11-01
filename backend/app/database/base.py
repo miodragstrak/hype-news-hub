@@ -6,7 +6,9 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
-    metadata = MetaData(naming_convention={
+    # All ORM/Core statements, including relationship loads and CAS writes, name
+    # the existing public tables explicitly. Never derive this from a session or actor.
+    metadata = MetaData(schema="public", naming_convention={
         "ix": "ix_%(table_name)s_%(column_0_name)s",
         "uq": "uq_%(table_name)s_%(column_0_name)s",
         "ck": "ck_%(table_name)s_%(constraint_name)s",
@@ -23,4 +25,4 @@ class UUIDPrimaryKey:
 
 class Timestamps:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.pg_catalog.now())

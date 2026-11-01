@@ -50,6 +50,21 @@ class DatabaseConfigurationTests(unittest.TestCase):
         self.assertEqual(engine.pool.size(), 2)
         self.assertTrue(engine.hide_parameters)
 
+    def test_all_application_tables_and_foreign_keys_compile_with_trusted_schema(self):
+        from sqlalchemy import delete, insert, select, update
+        from sqlalchemy.dialects.postgresql import dialect
+        from app import models
+        from app.database.base import Base
+        self.assertEqual(len(Base.metadata.tables), 12)
+        for table in Base.metadata.sorted_tables:
+            with self.subTest(table=table.name):
+                self.assertEqual(table.schema, "public")
+                for fk in table.foreign_keys:
+                    self.assertEqual(fk.column.table.schema, "public")
+                for statement, prefix in ((select(table), "FROM"), (insert(table), "INSERT INTO"),
+                    (update(table).values({next(iter(table.c)): next(iter(table.c))}), "UPDATE"), (delete(table), "DELETE FROM")):
+                    self.assertIn(prefix + " public." + table.name, str(statement.compile(dialect=dialect())))
+
     def test_invalid_connection_settings_fail_validation(self):
         for settings in [{"postgres_port": 0}, {"postgres_port": 65536}, {"database_pool_size": 0},
                          {"database_max_overflow": -1}, {"database_pool_timeout_seconds": 0},

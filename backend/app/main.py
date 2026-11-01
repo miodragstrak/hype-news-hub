@@ -1,15 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from contextlib import asynccontextmanager
 from starlette.concurrency import run_in_threadpool
 
 from app.api.router import api_router
+from app.api.editorial_body_limit import EditorialBodyLimit, editorial_validation_error
 from app.core.config import Settings, settings
+from app.core.editorial_security import EditorialIdentityVerifier, UnconfiguredEditorialIdentityVerifier
 from app.repositories.news_repository import CollectionBusy, PostgresNewsRepository, STORAGE_HEADERS, StorageUnavailable
 
 
-def create_app(app_settings: Settings | None = None) -> FastAPI:
+def create_app(app_settings: Settings | None = None, *, editorial_identity_verifier: EditorialIdentityVerifier | None = None) -> FastAPI:
     config = app_settings if app_settings is not None else settings
 
     @asynccontextmanager
@@ -22,9 +25,14 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
                 await run_in_threadpool(repository.engine.dispose)
 
     application = FastAPI(title=config.app_name, lifespan=lifespan)
+    application.add_exception_handler(RequestValidationError, editorial_validation_error)
+    application.state.editorial_identity_verifier = (
+        editorial_identity_verifier if editorial_identity_verifier is not None else UnconfiguredEditorialIdentityVerifier()
+    )
     application.state.news_repository = PostgresNewsRepository(config) if config.news_storage_backend == "postgres" else None
     allowed_origins = [origin.strip() for origin in config.backend_cors_origins.split(",") if origin.strip()]
 
+    application.add_middleware(EditorialBodyLimit)
     application.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
