@@ -142,7 +142,7 @@ class PostgresNewsRepository:
         try:
             connection = self.engine.connect()
             assert_runtime_role(connection)
-            locked = connection.execute(text("SELECT pg_try_advisory_lock(:key)"), {"key": COLLECTION_LOCK}).scalar_one()
+            locked = connection.execute(text("SELECT pg_catalog.pg_try_advisory_lock(:key)"), {"key": COLLECTION_LOCK}).scalar_one()
             connection.commit()
             if not locked:
                 raise CollectionBusy()
@@ -156,7 +156,7 @@ class PostgresNewsRepository:
                 if locked:
                     try:
                         connection.rollback()
-                        connection.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": COLLECTION_LOCK})
+                        connection.execute(text("SELECT pg_catalog.pg_advisory_unlock(:key)"), {"key": COLLECTION_LOCK})
                         connection.commit()
                     except SQLAlchemyError:
                         # Session locks must never leak back into the connection pool.

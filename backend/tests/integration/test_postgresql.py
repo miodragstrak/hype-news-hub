@@ -298,7 +298,8 @@ class PostgreSQLMigrationTests(PostgresCase):
     def test_upgrade_check_downgrade_and_reupgrade(self):
         with self.engine.begin() as connection:
             config = alembic_config(connection)
-            self.assertEqual(set(inspect(connection).get_table_names()) - {"alembic_version"}, set(Base.metadata.tables))
+            self.assertEqual(set(inspect(connection).get_table_names()) - {"alembic_version"},
+                             {table.name for table in Base.metadata.sorted_tables})
             command.upgrade(config, "head")
             command.check(config)
             command.downgrade(config, "base")

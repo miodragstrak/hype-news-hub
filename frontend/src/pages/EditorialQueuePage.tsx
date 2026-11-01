@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { NextStepPanel } from "../components/NextStepPanel";
+import { EditorialAccessBanner } from "../components/EditorialAccessBanner";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
@@ -57,17 +58,18 @@ export function EditorialQueuePage(): JSX.Element {
 
   if (stories.length === 0) {
     return (
-      <Card>
+      <><EditorialAccessBanner /><Card>
         <CardContent className="p-8 text-center">
           <p className="text-lg font-semibold">{isCollecting ? "Collection in progress." : isLoadingEditorial ? "Loading editorial stories..." : editorialError ? "Editorial queue unavailable." : "No editorial stories yet."}</p>
           <p className="mt-2 text-[#c2d3f5]">{editorialError ?? "Run Start Collection to build a prioritized editorial queue."}</p>
         </CardContent>
-      </Card>
+      </Card></>
     );
   }
 
   return (
     <section className="space-y-6">
+      <EditorialAccessBanner />
       <header className="space-y-2">
         <h2 className="text-4xl font-bold tracking-tight text-white">Review Editorial Stories</h2>
         <p className="text-[#c2d3f5]">Stories are ordered by editorial importance to help you act with confidence.</p>

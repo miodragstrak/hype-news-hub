@@ -1,4 +1,4 @@
-# PostgreSQL foundation and persistent collection — Sprints 15A/15B
+# PostgreSQL foundation, collection and editorial security — Sprints 15A/15B/17A
 
 ## Audited starting point and architecture
 
@@ -98,7 +98,11 @@ articles match existing primaries with the existing similarity function/threshol
 ties use story UUID order. New story UUIDs are generated only once. Current
 member content refreshes headline/categories/scores; singleton similarity stays
 zero. Existing stories are not automatically split/merged after headline edits.
-No editorial drafts, approvals, AI, publishing, or general audit-event schema is added.
+The collection schema is separate from the five private editorial tables added
+in Sprint 17A. See [editorial foundation](editorial-foundation.md) for immutable
+draft versions, frozen sources, decisions and events. The authenticated frontend
+workflow is implemented; production identity activation, AI and WordPress delivery
+remain separate work. Public demo overrides remain in memory.
 
 ### Temporal eligibility for new memberships
 
@@ -251,6 +255,43 @@ to the public internet or reuse another product's instance. Docker's
 migration tools and explicit provisioning. Compose maps `POSTGRES_RUNTIME_USER`
 and `POSTGRES_RUNTIME_PASSWORD` to the backend's connection credentials.
 
+## Trusted application schema — Sprint 17A.4.1
+
+All twelve SQLAlchemy tables inherit `MetaData(schema="public")`. ORM relationship
+loads, Core inserts/updates, optimistic-concurrency predicates and collection
+queries therefore name `public.<table>` explicitly. The schema is a fixed code
+policy, not a request, environment or session setting. Readable same-named tables
+in another schema cannot replace approved payloads, hashes or frozen evidence.
+Application raw table queries already use `public`; runtime-security catalogs,
+privilege functions and application advisory locks use `pg_catalog` explicitly.
+Runtime timestamp updates and editorial command timestamps also qualify their
+PostgreSQL functions.
+
+Engines start with `search_path=public,pg_catalog,pg_temp` and restore it on **every
+pool checkout**, outside a transaction. This handles committed session drift as
+well as role/database defaults. Keeping `public` first preserves the existing
+default-schema/reflection behavior; it is writable only by trusted administrators.
+`pg_temp` is explicitly last, not implicitly before application tables. These
+defaults supplement explicit table qualification; they are not its replacement.
+Tests force an adverse path after checkout and still read/write the real tables.
+
+Arbitrary raw SQL is not rewritten or sandboxed by SQLAlchemy. New raw queries
+must qualify application relations and security-sensitive functions/types. A
+runtime credential holder can still change their session settings and may have
+PostgreSQL's default TEMPORARY database permission. Normal application operations
+create no temporary objects; an identity owning relations (including temporary
+relations while present) fails the runtime ownership check. Qualification also
+protects ORM reads from temporary shadows independently of that check. Never
+expose runtime credentials or SQL execution to browser users.
+
+Migration and provisioning connections remain separate explicit owner operations.
+Alembic pins its transaction path and names `public.alembic_version` explicitly,
+including supplied test connections. Its comparison-only metadata copy normalizes
+the schema spelling to the existing unqualified revisions; it does not alter the
+runtime metadata or suppress table/FK comparisons. Revisions 01/02/03, persisted
+functions/triggers and their physical schema remain unchanged. Owner DDL and
+deliberate replacement of trusted public objects remain outside the runtime boundary.
+
 ## Runtime role provisioning
 
 For an existing 15A checkout, preserve the initialized database and owner password.
@@ -261,14 +302,110 @@ before provisioning. Do not replace the existing `.env` with the fresh template.
 Run `docker compose --profile tools run --rm --build provision-runtime` after
 upgrading migrations. It creates/rotates the dedicated login using bound password
 parameters and quoted identifiers. Names are validated, passwords require at
-least 24 characters, and existing privileged/owning/member roles are rejected
-rather than repurposed. Provisioning is explicit and repeatable.
+least 24 characters, and existing privileged/owning roles or memberships reaching
+such roles are rejected rather than repurposed. Non-owning, non-privileged group
+memberships are detached from the dedicated runtime login; shared group grants
+and other members are unchanged. The login is set to NOINHERIT and receives only
+explicit runtime grants. Provisioning is explicit, transactional and repeatable.
 
-The role receives CONNECT, schema USAGE, function EXECUTE and
-SELECT/INSERT/UPDATE/DELETE on the seven application tables. It receives no
-table ownership, schema CREATE, TRUNCATE, migration-version access, role/database
-creation, replication or superuser rights. The API rejects privileged or
-owner-member connections. Re-run provisioning after migrations adding tables.
+The role receives CONNECT, public schema USAGE and EXECUTE on
+`hnh_identity_hash(text)` and `hnh_editorial_snapshot_hash(...)`. Table allowlists are:
+
+| Tables | Allowed runtime privileges |
+| --- | --- |
+| `news_sources`, `collected_articles`, `article_identities`, `stories`, `story_articles`, `collection_runs`, `collection_source_results` | SELECT, INSERT, UPDATE |
+| `editorial_drafts` | SELECT, INSERT, UPDATE |
+| `editorial_draft_versions`, `editorial_version_sources`, `editorial_decisions`, `editorial_events` | SELECT, INSERT |
+
+Normal collection, recollection, identity updates, locking, recovery and editorial
+commands need no DELETE, TRUNCATE, REFERENCES or TRIGGER. Sprint 17A.4 revokes
+**all direct table and column ACLs**, including grant options, before assigning
+the allowlists. Table revocation alone does not remove column-level grants. No
+historical UPDATE, ownership, schema CREATE, migration-version access, role/database
+creation, replication or superuser rights are granted. Runtime guard checks use
+effective table/column privileges and grant options, not just DELETE. Any PUBLIC
+table/column grant or role membership, including non-inheriting SET ROLE paths,
+is unsafe. A privileged/owning identity must be replaced, never repurposed.
+
+Sprint 17A.4.1 additionally rejects effective CREATE on the connected database,
+CREATE on **any schema**, and database/schema/relation ownership outside `public`
+as well as inside it. Ownership or privileged identities reachable through role
+membership remain forbidden. Provisioning detaches manageable non-owning group
+memberships and revokes the runtime login's direct database/schema CREATE grants
+(and their grant options) with RESTRICT. It does not remove another role's grants
+or silently reassign owned objects. Remaining effective privileges cause rollback.
+Runtime checks also require the authenticated PostgreSQL login (`session_user`)
+to be the active role (`current_user`); a privileged owner session cannot pass by
+temporarily assuming the restricted role. Explicit named-role inspection during
+owner provisioning validates the target login instead of authorizing the owner.
+
+Provisioning and its final effective-rights check run in one transaction. Errors
+roll back password, ACL and membership changes. Revocations use RESTRICT rather
+than CASCADE: grants delegated by runtime to another role require administrator
+review. Shared group ACLs and other users' direct grants are not rewritten.
+Re-run provisioning after migrations adding tables and to apply permission
+hardening to existing logins; Alembic alone does not change runtime grants.
+Owner maintenance/retention tooling remains separate from runtime access.
+
+### Existing-database operational prerequisites
+
+Use the dedicated Hype News Hub database and the separate migration/administration
+identity with authority to alter this login, revoke its memberships and manage
+the application tables and excessive direct database/schema CREATE grants.
+Preserve existing data, owner credentials and backups.
+Stop the PostgreSQL backend during grant repair; do not temporarily run it as owner.
+
+Before re-provisioning an existing role, inventory its effective database/schema
+rights, memberships and ownership in the dedicated instance. For example, as an
+administrator, replace the role literal with the reviewed runtime name:
+
+```sql
+SELECT pg_catalog.has_database_privilege('hype_news_hub_runtime', current_database(), 'CREATE');
+SELECT nspname, pg_catalog.has_schema_privilege('hype_news_hub_runtime', oid, 'CREATE')
+FROM pg_catalog.pg_namespace;
+SELECT 'database', datname FROM pg_catalog.pg_database
+WHERE datdba = 'hype_news_hub_runtime'::regrole
+UNION ALL SELECT 'schema', nspname FROM pg_catalog.pg_namespace
+WHERE nspowner = 'hype_news_hub_runtime'::regrole
+UNION ALL SELECT 'relation', n.nspname || '.' || c.relname
+FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relowner = 'hype_news_hub_runtime'::regrole;
+```
+
+Review and explicitly remove, quarantine or reassign any unexpected shadow
+objects before reusing an owning login. Preserve evidence and legitimate data;
+provisioning never drops schemas/tables or changes their owners automatically.
+Use a fresh restricted identity if safe reassignment is not established.
+
+PUBLIC grants cannot be overridden by a role-specific DENY. Provisioning therefore
+stops **before changing the role** if any managed table/column grants PUBLIC
+access, or PUBLIC has CREATE on the connected database or any schema. Diagnostics
+name the affected database/schema/table/column and privilege.
+It does not silently revoke shared PUBLIC rights. An administrator must:
+
+1. Review the reported ACLs and every dependent application's/reporting role's
+   access. PUBLIC applies to all current and future roles, even with NOINHERIT.
+2. Replace intentional shared access with explicit grants to reviewed named roles,
+   without adding membership paths to this dedicated runtime login.
+3. Explicitly revoke PUBLIC table and column grants on the reported objects.
+   For example, after review, `REVOKE ALL PRIVILEGES ON TABLE public.collection_runs
+   FROM PUBLIC RESTRICT;` and, if a column grant was reported,
+   `REVOKE ALL PRIVILEGES (id) ON TABLE public.collection_runs FROM PUBLIC RESTRICT;`.
+   Repeat for each reported object. Do not revoke unrelated shared ACLs wholesale.
+   After evaluating consumers, database/schema examples are `REVOKE CREATE ON
+   DATABASE hype_news_hub FROM PUBLIC RESTRICT;` and `REVOKE CREATE ON SCHEMA
+   reviewed_schema FROM PUBLIC RESTRICT;`. PUBLIC grants cannot be removed for
+   just the runtime login; retain administrator control of these shared changes.
+4. Resolve any grants delegated by runtime or membership dependencies using an
+   administrator-reviewed plan. Do not add CASCADE to the provisioning code.
+5. Re-run provisioning (safe to repeat), verify guarded reads and collection, then
+   restart the backend with the restricted login. Unsafe existing logins receive
+   sanitized HTTP 503 responses until this succeeds.
+
+Review default privileges too: future schemas/migrations must not recreate PUBLIC
+CREATE or application table/column grants. Re-run provisioning after this update,
+even when the role passed Sprint 17A.4 checks. Do not treat a passed migration as permission readiness. No live
+database ACLs are changed by this implementation. Render's memory default is unaffected.
 
 Rotate the protected root runtime password, re-run provisioning with owner
 credentials, then recreate the backend to reload its runtime password and pools.
@@ -291,6 +428,7 @@ docker compose --profile tools run --rm migrate alembic check
 docker compose --profile tools run --rm migrate alembic history
 ```
 
+The three revisions run in order: `20261030_01 → 20261030_02 → 20261030_03`.
 The initial revision is `20261030_01`; Sprint 15B adds `20261030_02`, which
 backfills literal and normalized aliases and replaces unbounded text uniqueness
 with generated keys. Existing UUIDs and original source/article URLs are
@@ -308,10 +446,16 @@ operation and take a backup first. It scans the legacy dataset in memory and
 requires an online Alembic connection; `upgrade --sql` cannot perform this
 data-dependent preflight.
 
-Revision `20261030_02` is still the unreleased migration in this branch. Do not
-stamp/replay it over an already-populated local 15B database: recreate only a
-disposable test database, or plan a separate reviewed data migration for that
-dataset. No production database has been upgraded by this task.
+Revision `20261030_03` adds the five private editorial tables and immutable-history
+guards. Upgrading a populated 15B database preserves collection history; downgrading
+03 to 02 **deletes all editorial data**. Back up/export first and require an
+explicit operator decision. Sprint 17A.4 changes provisioning only, with no new
+migration and no edits to revisions 01/02/03.
+
+Never rewrite, stamp over or replay an already-applied revision. Use a new reviewed
+migration for future changes to existing datasets; recreate only disposable test
+databases. External database revision usage cannot be inferred from repository or
+local test evidence. No production database has been upgraded by this task.
 Migrations do not call models' `create_all()` or seed live data. The normal
 `alembic.ini` contains no credentials. The migration environment imports all
 models and supports injected connections for isolated integration tests.
@@ -440,15 +584,19 @@ deleted data. Test restores regularly instead of relying only on successful dump
 1. Provision Darkić's dedicated Ubuntu host/database, protected owner/runtime
    secrets, private networking, durable storage, scheduled encrypted off-host
    backups and a verified restore. No production infrastructure was provisioned.
-2. Run both migrations, provision/recheck runtime grants, and explicitly enable
+2. Upgrade through all three migrations (`01 → 02 → 03`), review existing ACLs,
+   re-provision/recheck runtime allowlists, and explicitly enable
    PostgreSQL mode. Keep Render on default memory until an approved cutover;
    memory history is not automatically imported and is lost on restart.
 3. Configure HTTPS/reverse proxy and the browser-accessible API URL at frontend
    build time (existing Compose defaults target localhost). Keep database ports
    unpublished. Configure verified TLS if database traffic leaves the local host.
-4. Add authentication/authorization before exposing editorial or collection
-   operations. Complete live-source UAT and connector fixes for hypetv.rs/Hype
-   Production in Sprint 15C; this sprint does not change connector routing.
+4. Activate a verified production identity adapter and ingress controls before
+   exposing private editorial operations; the implemented boundary fails closed
+   without it. Public collection diagnostics retain their existing policy; review
+   ingress protection separately. Complete live-source UAT and any website-operator
+   coordination for hypetv.rs/Hype Production; connector reliability/security
+   changes are implemented in Sprint 15C, not permission provisioning.
 5. Define monitoring, storage/statement time limits, retention and eventual
    pagination/candidate selection. Current reads/matching load retained stories;
    this is suitable for initial volumes, not an unbounded archive. The temporal
@@ -462,6 +610,8 @@ story merge/split tooling, article revision history and exact per-run article
 membership are future work. Collection history currently stores per-source
 counts/errors and first-seen article provenance, not a full historical payload
 for every observation. Interrupted runs are repaired on the next collection,
-not by a background worker. Editorial demo drafts remain in memory; persistent
-approvals/version history, real Serbian AI generation and WordPress Draft
-publishing remain separate work. Nothing in this sprint authorizes deployment.
+not by a background worker. Editorial demo overrides remain in memory; the
+authenticated PostgreSQL editorial workflow, approvals/version history and frontend
+are implemented separately. Production identity activation, real Serbian AI
+generation and WordPress Draft publishing remain separate work. Nothing in this
+sprint authorizes deployment.

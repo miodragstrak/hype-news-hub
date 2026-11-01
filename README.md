@@ -2,6 +2,30 @@
 
 Internal application for aggregating and processing entertainment news.
 
+## Sprint 17A.2: private versioned editorial workflow
+
+Sprint 17A.3A adds the [manual editorial frontend](docs/editorial-frontend.md) at
+`/review/{story_id}/edit`. A trusted frontend identity adapter and the backend's
+verified authentication/PostgreSQL boundary are required; editing is unavailable
+by default. Public collection and previews remain usable without private access.
+
+Sprint 17A.3B adds private version history, confirmed human review decisions, an
+audit timeline and version-pinned approved preview through the existing API.
+WordPress publishing remains disabled. See the frontend guide for routes,
+permission checks, retry behavior and approval revalidation limits.
+
+Private PostgreSQL commands support manual Serbian Latin drafts, immutable content
+versions/source snapshots, review decisions, audit history, optimistic concurrency
+and idempotent retries. Identity verification still defaults to unavailable; a
+verified server-side identity adapter and restricted PostgreSQL are required.
+Existing public collection and demo previews retain their memory/PostgreSQL behavior.
+No AI generation or WordPress integration is included.
+
+See [editorial security, schema and migration operations](docs/editorial-foundation.md)
+for immutable provenance, restricted runtime grants and test-only identities.
+See [editorial command contracts and workflow](docs/editorial-workflow.md) for the
+private endpoints, payload, revision/approval policy and retry behavior.
+
 ## Sprint 15C: source reliability and security
 
 Hype Serbia requests selective WordPress media/term embedding; discovery and
