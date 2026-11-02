@@ -11,6 +11,7 @@ import { EditorialDraftPage } from "./pages/EditorialDraftPage";
 import { EditorialHistoryPage } from "./pages/EditorialHistoryPage";
 import { EditorialDecisionsPage } from "./pages/EditorialDecisionsPage";
 import { EditorialApprovedPage } from "./pages/EditorialApprovedPage";
+import { EditorialAiPage } from "./pages/EditorialAiPage";
 import { EditorialAccessProvider, type EditorialIdentityAdapter } from "./context/EditorialAccessContext";
 
 function App({ editorialIdentity }: { editorialIdentity?: EditorialIdentityAdapter }) {
@@ -27,6 +28,7 @@ function App({ editorialIdentity }: { editorialIdentity?: EditorialIdentityAdapt
         <Route path="/review/:storyId/history" element={<EditorialHistoryPage />} />
         <Route path="/review/:storyId/decisions" element={<EditorialDecisionsPage />} />
         <Route path="/review/:storyId/approved" element={<EditorialApprovedPage />} />
+        <Route path="/review/:storyId/ai" element={<EditorialAiPage />} />
         <Route path="/publish" element={<PublishPage />} />
       </Route>
       <Route path="/portal-preview/:storyId" element={<PortalPreviewPage />} />

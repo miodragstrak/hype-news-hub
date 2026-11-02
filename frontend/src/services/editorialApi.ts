@@ -1,4 +1,6 @@
 import { API_BASE_URL } from "./apiClient";
+import type { AiSuggestion, AiSummary, CreateAiSuggestion } from "../types/ai";
+import type { EditorialStoryWorkspace } from "../types/news";
 import type { CreateDraftCommand, DecisionCommand, EditorialCapabilities, EditorialDraft, EditorialEvent, EditorialReceipt, EditorialVersion, EditorialVersionSummary, NegativeDecisionCommand, SaveRevisionCommand, StorySource, VersionCommand } from "../types/editorial";
 
 export class EditorialApiError extends Error {
@@ -87,5 +89,18 @@ export class EditorialApi {
   }
   reopen(draftId: string, command: NegativeDecisionCommand, signal?: AbortSignal) {
     return this.request<EditorialReceipt>(`/api/editorial/drafts/${encodeURIComponent(draftId)}/reopen`, signal, command);
+  }
+  collectedStory(storyId: string, signal?: AbortSignal) {
+    // Existing public collected material, with private transport/no demo fallback.
+    return this.request<EditorialStoryWorkspace>(`/api/editorial-stories/${encodeURIComponent(storyId)}`, signal);
+  }
+  aiSuggestions(storyId: string, limit = 20, offset = 0, signal?: AbortSignal) {
+    return this.request<AiSummary[]>(`/api/editorial/ai/suggestions?story_id=${encodeURIComponent(storyId)}&limit=${limit}&offset=${offset}`, signal);
+  }
+  aiSuggestion(id: string, signal?: AbortSignal) {
+    return this.request<AiSuggestion>(`/api/editorial/ai/suggestions/${encodeURIComponent(id)}`, signal);
+  }
+  generateAiSuggestion(command: CreateAiSuggestion, signal?: AbortSignal) {
+    return this.request<AiSuggestion>("/api/editorial/ai/suggestions", signal, command);
   }
 }

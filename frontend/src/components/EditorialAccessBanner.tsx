@@ -19,6 +19,7 @@ export function EditorialAccessBanner({ storyId }: { storyId?: string }) {
     <p className="mt-1 text-[#b7c9ee]">Public collection and source previews remain available.</p>
     {readable && storyId ? <Link className="mt-3 inline-block font-semibold text-[#f5c518] underline" to={`/review/${encodeURIComponent(storyId)}/edit`}>{editable ? "Open draft editor" : "Open saved editorial draft"}</Link> : null}
     {readable && storyId ? <Link className="ml-4 mt-3 inline-block font-semibold text-[#f5c518] underline" to={`/review/${encodeURIComponent(storyId)}/decisions`}>Pregled i odluke</Link> : null}
+    {readable && storyId ? <Link className="ml-4 mt-3 inline-block font-semibold text-[#f5c518] underline" to={`/review/${encodeURIComponent(storyId)}/ai`}>AI predlozi</Link> : null}
     {access.state === "error" || access.state === "signed_out" ? <button type="button" className="mt-3 block font-semibold text-[#f5c518] underline" onClick={access.refresh}>Retry editorial access</button> : null}
   </aside>;
 }

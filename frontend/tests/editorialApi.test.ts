@@ -45,6 +45,17 @@ describe("private editorial transport", () => {
     await expect(api.capabilities()).rejects.toMatchObject({ status: 502 });
     await expect(api.find(storyId)).rejects.toBeInstanceOf(EditorialApiError);
   });
+  it("uses the private AI contracts with UUID attribution, no implicit retries and no provider credentials", async () => {
+    const fetcher = vi.fn().mockImplementation(async () => new Response("{}")); vi.stubGlobal("fetch", fetcher);
+    const api = new EditorialApi(async () => "verified-token", "https://backend.invalid");
+    const command = { command_id: uuid(999), story_id: storyId, article_id: sourceRows[1].article_id, source_id: sourceRows[1].source_id, mode: "translation" as const, target_locale: "sr-Latn" as const };
+    await api.collectedStory(storyId); await api.aiSuggestions(storyId, 5, 20); await api.aiSuggestion(uuid(1001)); await api.generateAiSuggestion(command);
+    expect(fetcher.mock.calls.map(([url]) => new URL(url).pathname)).toEqual([`/api/editorial-stories/${storyId}`, "/api/editorial/ai/suggestions", `/api/editorial/ai/suggestions/${uuid(1001)}`, "/api/editorial/ai/suggestions"]);
+    expect(new URL(fetcher.mock.calls[1][0]).search).toBe(`?story_id=${storyId}&limit=5&offset=20`);
+    expect(JSON.parse(fetcher.mock.calls[3][1].body)).toEqual(command);
+    expect(fetcher.mock.calls.every(([, init]) => init.cache === "no-store" && init.credentials === "omit" && init.headers.Authorization === "Bearer verified-token")).toBe(true);
+    fetcher.mockRejectedValue(new Error("offline")); await expect(api.generateAiSuggestion(command)).rejects.toMatchObject({ status: 0 }); expect(fetcher).toHaveBeenCalledTimes(5);
+  });
   it("bounds stalled HTTP requests and reports an uncertain network outcome", async () => {
     vi.useFakeTimers();
     try {
