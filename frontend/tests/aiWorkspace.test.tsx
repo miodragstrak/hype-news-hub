@@ -79,6 +79,12 @@ describe("private AI editorial workspace", () => {
     expect(screen.getByText(/123 \/ 40 \/ 0 \/ 0 \/ 163/)).toBeTruthy(); expect(screen.getByText(/Trošak: nepoznat/)).toBeTruthy();
     expect(posts()).toHaveLength(0); expect(screen.queryByRole("button", { name: /Prihvati|Odobri|Objavi/ })).toBeNull();
   });
+  it("opens the separate acceptance editor for the selected successful suggestion", async () => {
+    suggestions = [aiSuggestion()]; mount(); await loaded(); inspectFirst(); await screen.findByText("AI PRIVATE BODY 1");
+    expect(screen.getByRole("link", { name: "Uredi i pripremi prihvatanje" }).getAttribute("href")).toBe(`/review/${storyId}/ai/${suggestions[0].id}/edit`);
+    fireEvent.click(screen.getByRole("link", { name: "Uredi i pripremi prihvatanje" })); await screen.findByRole("form", { name: "Uređivanje AI predloga" });
+    expect((screen.getByLabelText(/^Body/) as HTMLTextAreaElement).value).toBe("AI PRIVATE BODY 1"); expect(posts()).toHaveLength(0);
+  });
   it("labels the deterministic mock truthfully and preserves unknown frozen language", async () => {
     const value = aiSuggestion(1, { provenance: { provider: "mock", model: "deterministic-no-translation-v1", is_mock: true, adapter_version: "1" } });
     value.input.source.language = null; value.input.source.source_language = null; value.input.source.published_at = null; suggestions = [value];

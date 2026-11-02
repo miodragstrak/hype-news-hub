@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useBeforeUnload, useBlocker, useParams } from "react-router-dom";
+import { Link, useBeforeUnload, useBlocker, useParams } from "react-router-dom";
 import { AiSuggestionComparison, aiDate } from "../components/AiSuggestionComparison";
 import { ConfirmDiscardDialog } from "../components/ConfirmDiscardDialog";
 import { EditorialPager } from "../components/EditorialPager";
@@ -168,6 +168,7 @@ function AiWorkspace({ storyId, client, capabilities, onDenied }: PrivatePageAcc
         <Button type="button" variant="secondary" className="h-auto min-h-10 whitespace-normal" disabled={task.busy || !canGenerate} onClick={() => setRetryOpen(true)}>Oporavi istu komandu</Button>
       </section> : null}
       <AiSuggestionComparison suggestion={detail} source={source} article={article} />
+      {canEdit && contextReady && detail?.status === "succeeded" && !task.busy && !intent ? <Link className="inline-block rounded-xl border border-[#f5c518] px-4 py-3 font-semibold text-[#f5c518] underline" to={`/review/${storyId}/ai/${detail.id}/edit`}>Uredi i pripremi prihvatanje</Link> : null}
       <section aria-label="Istorija AI predloga" className="space-y-4 rounded-xl border border-white/20 p-4 sm:p-6">
         <h3 className="text-xl font-bold">Prethodni AI predlozi ove priče</h3><p className="text-sm text-[#c2d3f5]">Lista učitava metapodatke. Tekst i zamrznuti dokazi učitavaju se tek izborom predloga.</p>
         <EditorialPager {...page} count={rows.length} busy={task.busy} onPage={(offset, limit) => void history(offset, limit)} label="AI predloga po stranici" />

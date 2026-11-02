@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EditorialApi, EditorialApiError } from "../src/services/editorialApi";
-import { formFromPayload, readPublishingPayload, validateForm } from "../src/lib/editorialForm";
+import { formFromPayload, normalizeEditorialText, readPublishingPayload, validateForm } from "../src/lib/editorialForm";
 import { publishingPayload, sourceRows, storyId, uuid } from "./editorialFixtures";
 
 describe("private editorial transport", () => {
@@ -65,9 +65,46 @@ describe("private editorial transport", () => {
       await vi.advanceTimersByTimeAsync(60000); await assertion;
     } finally { vi.useRealTimers(); }
   });
+  it("sends explicit AI acceptance to the existing private endpoint without generation or implicit retry", async () => {
+    const fetcher = vi.fn().mockImplementation(async () => new Response("{}")); vi.stubGlobal("fetch", fetcher);
+    const api = new EditorialApi(async () => "verified", "https://backend.invalid");
+    const command = { command_id: uuid(901), story_id: storyId, expected_revision: 5, payload: publishingPayload(), confirm_acceptance: true as const };
+    await api.acceptAiSuggestion(uuid(1001), command);
+    expect(fetcher.mock.calls[0][0]).toBe(`https://backend.invalid/api/editorial/ai/suggestions/${uuid(1001)}/accept`);
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual(command);
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "POST", cache: "no-store", credentials: "omit", redirect: "error", headers: { Authorization: "Bearer verified" } });
+    fetcher.mockRejectedValue(new Error("offline")); await expect(api.acceptAiSuggestion(uuid(1001), command)).rejects.toMatchObject({ status: 0 }); expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("publishing form contract", () => {
+  // Confirmed against backend Text's strip_whitespace=True, not JS trim or the
+  // larger Python str.isspace() set (U+001C–U+001F are rejected by Text).
+  const backendWhitespace = [...Array.from({ length: 5 }, (_, index) => 9 + index), 0x20, 0x85, 0xa0, 0x1680,
+    ...Array.from({ length: 11 }, (_, index) => 0x2000 + index), 0x2028, 0x2029, 0x202f, 0x205f, 0x3000];
+  it.each(backendWhitespace)("matches backend U+%s boundary stripping across every scalar Text field", point => {
+    const edge = String.fromCodePoint(point), payload = publishingPayload();
+    payload.images = [{ url: "https://media.invalid/image.jpg", alt: "Opis fotografije", credit: "Portal", source_article_id: sourceRows[0].article_id }];
+    const form = formFromPayload(payload);
+    for (const key of ["headline", "body", "excerpt", "seoTitle", "seoDescription"] as const) form[key] = edge + form[key] + edge;
+    form.images[0].alt = edge + form.images[0].alt + edge; form.images[0].credit = edge + form.images[0].credit + edge;
+    expect(validateForm(form)).toEqual({ payload, errors: {} });
+    expect(form.body).toBe(edge + payload.body + edge); expect(normalizeEditorialText(edge + edge)).toBe("");
+  });
+  it.each([0x1c, 0x1d, 0x1e, 0x1f])("rejects Python-only U+%s boundary controls instead of silently stripping them", point => {
+    const form = formFromPayload(publishingPayload()), value = String.fromCodePoint(point) + "Tekst" + String.fromCodePoint(point); form.body = value;
+    expect(normalizeEditorialText(value)).toBe(value); expect(validateForm(form).errors.body).toBeTruthy();
+  });
+  it("preserves internal whitespace and backend-valid FEFF/zero-width boundaries exactly", () => {
+    const value = "\ufeffPrvi\tred\r\nDrugi\u0085red\u00a0čćšžđ\u2028Treći\u2029red\ufeff";
+    const form = formFromPayload({ ...publishingPayload(), body: value });
+    expect(validateForm(form).errors).toEqual({}); expect(validateForm(form).payload.body).toBe(value);
+    for (const edge of ["\ufeff", "\u180e", "\u200b", "\u2060"]) expect(normalizeEditorialText(edge + "Tekst" + edge)).toBe(edge + "Tekst" + edge);
+  });
+  it("rejects scalar Text fields containing only backend whitespace", () => {
+    const form = formFromPayload(publishingPayload()); form.body = "\u0085\u00a0\u3000";
+    expect(validateForm(form).payload.body).toBe(""); expect(validateForm(form).errors.body).toBe("This field is required.");
+  });
   it("roundtrips all payload fields, multiple images and UUID attribution", () => {
     const payload = publishingPayload(); payload.images = [1, 2].map((value, index) => ({ url: `https://media.invalid/${value}`, alt: `Foto ${value}`, credit: "Izvor", source_article_id: sourceRows[index].article_id })); payload.source_attribution = sourceRows.map(({ article_id, source_id }) => ({ article_id, source_id }));
     expect(validateForm(formFromPayload(payload))).toEqual({ payload, errors: {} });

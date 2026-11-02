@@ -35,7 +35,7 @@ export function AiSuggestionComparison({ suggestion, source, article }: { sugges
     </CardContent></Card>
     <Card className="min-w-0"><CardContent className="space-y-4 p-4 sm:p-6">
       <h3 className="text-xl font-bold">AI predlog — nije odobreni sadržaj</h3>
-      <p className="text-sm text-[#c2d3f5]">Predlog ne menja sačuvani nacrt ili odluke. Prihvatanje, uređivanje i objavljivanje nisu dostupni u ovom prikazu.</p>
+      <p className="text-sm text-[#c2d3f5]">Ovo je nepromenjeni AI predlog. Urednik priprema prihvatanje u zasebnoj formi; ovaj prikaz ne menja nacrt ili odluke. Objavljivanje nije dostupno.</p>
       {suggestion ? <>
         <p role="status" className="font-semibold text-[#f5c518]">{aiStatusText[suggestion.status]}</p>
         <p className="text-sm">Provider: {suggestion.provenance.provider} · Model: {suggestion.provenance.model} · Adapter: {suggestion.provenance.adapter_version}</p>

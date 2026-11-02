@@ -13,6 +13,11 @@ export function canonicalJson(value: unknown): string {
 export const emptyForm = (): EditorialForm => ({ headline: "", body: "", excerpt: "", slug: "", categories: [""], tags: [], seoTitle: "", seoDescription: "", images: [], sources: [] });
 export const formFromPayload = (payload: PublishingPayload): EditorialForm => ({ headline: payload.headline, body: payload.body, excerpt: payload.excerpt, slug: payload.slug, categories: [...payload.categories], tags: [...payload.tags], seoTitle: payload.seo.title, seoDescription: payload.seo.description, images: payload.images.map(image => ({ ...image })), sources: payload.source_attribution.map(source => ({ ...source })) });
 
+// Match PublishingPayload's Pydantic Text(strip_whitespace=True), before the
+// command is frozen. Unlike JS trim, this removes NEL and preserves FEFF. Python's
+// extra U+001C–U+001F whitespace is rejected by Text, not stripped by Pydantic.
+export const normalizeEditorialText = (value: string): string => value.replace(/^[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[\u0009-\u000d\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/gu, "");
+
 export function safeLink(value: string | null): string | null {
   if (!value || /[\x00-\x20\x7f]/.test(value)) return null;
   try {
@@ -26,7 +31,7 @@ export function safeLink(value: string | null): string | null {
 export function validateForm(form: EditorialForm): { payload: PublishingPayload; errors: FormErrors } {
   const errors: FormErrors = {};
   function text(key: string, value: string, maximum: number, trim = true): string {
-    const result = trim ? value.trim() : value;
+    const result = trim ? normalizeEditorialText(value) : value;
     if (!result) errors[key] = "This field is required.";
     else if ([...result].length > maximum) errors[key] = `Use at most ${maximum} characters.`;
     else if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]|<[!?/a-zA-Z]/u.test(result)) errors[key] = "Use plain text without HTML or control characters.";
@@ -38,9 +43,9 @@ export function validateForm(form: EditorialForm): { payload: PublishingPayload;
     values.forEach((item, index) => {
       const field = `${key}-${index}`;
       text(field, item, 100, false);
-      // Python str.strip whitespace (the backend Text validator), without silently
-      // changing labels. FEFF is deliberately excluded: it is backend-valid text.
-      if (/^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]|[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/u.test(item)) errors[field] = "Remove leading or trailing whitespace from this label.";
+      // Preserve labels exactly. A valid command can contain only labels that
+      // Pydantic will also preserve; padding requires an explicit editor change.
+      if (normalizeEditorialText(item) !== item) errors[field] = "Remove leading or trailing whitespace from this label.";
     });
     if (new Set(values.map(item => item.toLowerCase())).size !== values.length) errors[key] = "Remove duplicate labels.";
     return [...values];

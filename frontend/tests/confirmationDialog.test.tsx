@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useRef, useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ConfirmDiscardDialog } from "../src/components/ConfirmDiscardDialog";
 
@@ -13,6 +14,34 @@ function show(overrides = {}) {
 }
 
 describe("shared confirmation dialog", () => {
+  function LockingCaller() {
+    const trigger = useRef<HTMLButtonElement>(null);
+    const [open, setOpen] = useState(false), [saved, setSaved] = useState(false);
+    return <><button ref={trigger} disabled={open} onClick={() => setOpen(true)}>Acceptance trigger</button><button>Next control</button>
+      {saved ? <p tabIndex={-1} ref={node => node?.focus()}>Confirmed result</p> : null}
+      {open ? <ConfirmDiscardDialog title={title} message={message} confirmLabel="Confirm" cancelLabel="Cancel" cancelFocusRef={trigger} onCancel={() => setOpen(false)} onConfirm={() => { setOpen(false); setSaved(true); }} /> : null}</>;
+  }
+  it.each(["Escape", "Cancel"])("restores an explicitly captured, initially disabled trigger after %s", action => {
+    const frames: FrameRequestCallback[] = []; vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+    render(<LockingCaller />); const trigger = screen.getByRole("button", { name: "Acceptance trigger" }); trigger.focus(); fireEvent.click(trigger);
+    expect(trigger.hasAttribute("disabled")).toBe(true);
+    if (action === "Escape") fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" }); else fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(trigger.hasAttribute("disabled")).toBe(false); expect(frames).toHaveLength(1);
+    act(() => frames[0](0)); expect(document.activeElement).toBe(trigger); expect(screen.queryByText("Confirmed result")).toBeNull();
+  });
+  it("does not restore cancellation focus after confirmation or steal intentional focus", () => {
+    const frames: FrameRequestCallback[] = []; vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+    render(<LockingCaller />); const trigger = screen.getByRole("button", { name: "Acceptance trigger" }); fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" })); screen.getByRole("button", { name: "Next control" }).focus();
+    act(() => frames[0](0)); expect(document.activeElement).toBe(screen.getByRole("button", { name: "Next control" }));
+    fireEvent.click(trigger); fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(frames).toHaveLength(1); expect(document.activeElement).toBe(screen.getByText("Confirmed result"));
+  });
+  it("ignores delayed cancellation focus after the caller unmounts", () => {
+    const frames: FrameRequestCallback[] = []; vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => { frames.push(callback); return frames.length; });
+    const { unmount } = render(<LockingCaller />); const trigger = screen.getByRole("button", { name: "Acceptance trigger" }); fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" })); unmount(); const focus = vi.spyOn(trigger, "focus"); act(() => frames[0](0)); expect(focus).not.toHaveBeenCalled();
+  });
   it("preserves complete consequential text and accessible labels without truncation", () => {
     show({ lang: "sr-Latn" });
     const dialog = screen.getByRole("alertdialog", { name: title });

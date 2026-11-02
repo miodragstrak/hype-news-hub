@@ -220,5 +220,6 @@ Gemini implementation is complete, and one controlled local generation was repor
 successful after acceptance. Production activation still requires separate review,
 model evaluation and protected credentials. A single successful call does not
 establish translation quality or factual correctness. Sprint 17B.2A adds the
-[generation and review workspace](ai-workspace.md); suggestion acceptance/editing
-in the frontend and multi-source input remain later work.
+[generation and review workspace](ai-workspace.md); Sprint 17B.2B adds explicit
+frontend editing/acceptance through the existing backend command. Multi-source
+input remains later work. Production activation is still separate.

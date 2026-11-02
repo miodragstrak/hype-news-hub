@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "./apiClient";
-import type { AiSuggestion, AiSummary, CreateAiSuggestion } from "../types/ai";
+import type { AcceptAiSuggestion, AiSuggestion, AiSummary, CreateAiSuggestion } from "../types/ai";
 import type { EditorialStoryWorkspace } from "../types/news";
 import type { CreateDraftCommand, DecisionCommand, EditorialCapabilities, EditorialDraft, EditorialEvent, EditorialReceipt, EditorialVersion, EditorialVersionSummary, NegativeDecisionCommand, SaveRevisionCommand, StorySource, VersionCommand } from "../types/editorial";
 
@@ -102,5 +102,8 @@ export class EditorialApi {
   }
   generateAiSuggestion(command: CreateAiSuggestion, signal?: AbortSignal) {
     return this.request<AiSuggestion>("/api/editorial/ai/suggestions", signal, command);
+  }
+  acceptAiSuggestion(suggestionId: string, command: AcceptAiSuggestion, signal?: AbortSignal) {
+    return this.request<EditorialReceipt>(`/api/editorial/ai/suggestions/${encodeURIComponent(suggestionId)}/accept`, signal, command);
   }
 }

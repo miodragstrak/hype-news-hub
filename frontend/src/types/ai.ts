@@ -1,7 +1,8 @@
-import type { EditorialReceipt } from "./editorial";
+import type { EditorialReceipt, PublishingPayload } from "./editorial";
 
 /** Private Sprint 17B contracts. Provider selection and credentials are server-owned. */
 export type CreateAiSuggestion = { command_id: string; story_id: string; article_id: string; source_id: string; target_locale: "sr-Latn"; mode: "translation" };
+export type AcceptAiSuggestion = { command_id: string; story_id: string; expected_revision: number; payload: PublishingPayload; confirm_acceptance: true };
 export type AiStatus = "processing" | "succeeded" | "failed" | "interrupted" | "rejected" | "accepted";
 export type AiProvenance = { provider: "mock" | "gemini"; model: string; adapter_version: string; is_mock: boolean };
 export type AiSource = {

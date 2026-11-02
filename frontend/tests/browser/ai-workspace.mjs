@@ -34,9 +34,9 @@ async function js(expression) {
   return result.result.value;
 }
 const click = label => js(`(() => { const button=[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith(${JSON.stringify(label)})); if(!button||button.disabled) throw Error('Missing enabled button');button.scrollIntoView({block:'center'});button.click(); })()`);
-async function key(value, code) {
-  await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: value, code: value, windowsVirtualKeyCode: code });
-  await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: value, code: value, windowsVirtualKeyCode: code });
+async function key(value, code, modifiers = 0) {
+  await cdp("Input.dispatchKeyEvent", { type: "keyDown", key: value, code: value, windowsVirtualKeyCode: code, modifiers, ...(value === "Enter" ? { text: "\r", unmodifiedText: "\r" } : {}) });
+  await cdp("Input.dispatchKeyEvent", { type: "keyUp", key: value, code: value, windowsVirtualKeyCode: code, modifiers });
 }
 try {
   server = await createServer({ root: frontend, server: { host: "127.0.0.1", port: 0 }, define: {
@@ -67,8 +67,43 @@ try {
     await until(() => js(`document.querySelector('[aria-label="Tekst AI predloga"]').scrollTop>0`), "keyboard scrolling");
     assert.equal(await js("aiFixture.posts.length"), 0);
     if (artifacts) await writeFile(path.join(artifacts, `${width}x${height}.png`), Buffer.from((await cdp("Page.captureScreenshot", { format: "png" })).data, "base64"));
-    results.push({ width, height, ...measurements });
+    const frozen = await js("JSON.stringify(aiFixture.getEvidence())");
+    await js(`document.querySelector('a[href$="/edit"][href*="/ai/"]').click()`);
+    await until(() => js(`Boolean(document.querySelector('form[aria-label="Uređivanje AI predloga"] textarea[name=body]:not([readonly])'))`), "acceptance editor");
+    await js(`(() => { const body=document.querySelector('textarea[name=body]');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(body,String.fromCharCode(0x85)+'Urednički potvrđen tekst.'+String.fromCharCode(0x85));body.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+    await js(`([...document.querySelectorAll('button')].find(b=>b.textContent==='Pregledaj i potvrdi prihvatanje')).focus()`);
+    await key("Enter", 13); await until(() => js(`Boolean(document.querySelector('[role=alertdialog]'))`), "keyboard confirmation");
+    const confirmation = await js(`(() => { const dialog=document.querySelector('[role=alertdialog]'),r=dialog.getBoundingClientRect();return {top:r.top,bottom:r.bottom,width:r.width,height:r.height,overflow:dialog.scrollWidth>dialog.clientWidth+1,buttons:[...dialog.querySelectorAll('button')].map(b=>{const q=b.getBoundingClientRect();return {top:q.top,bottom:q.bottom,disabled:b.disabled}})}; })()`);
+    assert.ok(confirmation.top >= 0 && confirmation.bottom <= height + 1 && !confirmation.overflow, "Acceptance confirmation fits viewport");
+    assert.ok(confirmation.buttons.every(button => button.top >= 0 && button.bottom <= height + 1 && !button.disabled), "Both confirmation actions are reachable");
+    await key("Escape", 27);
+    await until(() => js(`!document.querySelector('[role=alertdialog]')&&document.activeElement?.textContent==='Pregledaj i potvrdi prihvatanje'&&!document.activeElement.disabled`), "Escape restores enabled trigger");
+    assert.equal(await js("aiFixture.acceptancePosts.length"), 0);
+    assert.equal(await js(`document.querySelector('textarea[name=body]').value`), "\u0085Urednički potvrđen tekst.\u0085");
+    await key("Tab", 9, 8); assert.equal(await js(`document.activeElement?.textContent`), "Add image reference");
+    await key("Tab", 9); assert.equal(await js(`document.activeElement?.textContent`), "Pregledaj i potvrdi prihvatanje");
+    await key("Enter", 13); await until(() => js(`Boolean(document.querySelector('[role=alertdialog]'))`), "second keyboard confirmation");
+    await click("Odustani"); await until(() => js(`!document.querySelector('[role=alertdialog]')&&document.activeElement?.textContent==='Pregledaj i potvrdi prihvatanje'`), "Cancel restores trigger");
+    await key("Enter", 13); await until(() => js(`Boolean(document.querySelector('[role=alertdialog]'))`), "explicit confirmation after cancellation");
+    if (width === 320) await js("aiFixture.loseAccept()");
+    await js(`(() => { const b=[...document.querySelectorAll('button')].find(b=>b.textContent==='Prihvati u nacrt');b.click();b.click(); })()`);
+    if (width === 320) {
+      await until(() => js(`Boolean(document.querySelector('[aria-label="Oporavak prihvatanja"]'))`), "uncertain acceptance");
+      assert.equal(await js("aiFixture.acceptancePosts.length"), 1);
+      await click("Ponovi isto prihvatanje");
+      assert.equal(await js("JSON.stringify(aiFixture.acceptancePosts[0])===JSON.stringify(aiFixture.acceptancePosts[1])"), true);
+    }
+    await until(() => js(`Boolean(document.querySelector('[aria-label="Potvrđeno AI prihvatanje"]'))`), "confirmed pinned version");
+    const acceptance = await js(`({posts:aiFixture.acceptancePosts.length,versions:aiFixture.getVersions().length,status:aiFixture.getHead().status,approval:aiFixture.getHead().effective_approval,text:document.querySelector('[aria-label="Prihvaćena AI urednička verzija"]').textContent,documentWidth:document.documentElement.scrollWidth})`);
+    assert.equal(acceptance.posts, width === 320 ? 2 : 1); assert.equal(acceptance.versions, 2); assert.equal(acceptance.status, "editing"); assert.equal(acceptance.approval, false);
+    assert.ok(acceptance.text.includes("Urednički potvrđen tekst.")); assert.ok(acceptance.documentWidth <= width + 1);
+    assert.equal(await js("aiFixture.acceptancePosts[0].payload.body"), "Urednički potvrđen tekst.", "Backend Text boundaries are normalized before freezing");
+    assert.equal(await js(`document.activeElement?.textContent==='Pregledaj i potvrdi prihvatanje'`), false, "Confirmation does not restore cancellation focus after success");
+    assert.equal(await js("JSON.stringify(aiFixture.getEvidence())"), frozen, "Acceptance preserves frozen evidence");
+    results.push({ width, height, ...measurements, confirmation, acceptance: { ...acceptance, text: undefined } });
   }
+  await cdp("Page.navigate", { url: `http://127.0.0.1:${address.port}/tests/browser/ai-workspace.html` });
+  await until(() => js(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Generiši AI predlog'&&!b.disabled))`), "generation workspace reload");
   await js("aiFixture.lose()"); await click("Generiši AI predlog");
   await until(() => js(`document.body.textContent.includes('Ishod komande nije potvrđen')`), "uncertain generation");
   assert.equal(await js("aiFixture.posts.length"), 1);
@@ -81,7 +116,7 @@ try {
   await until(() => js(`document.body.textContent.includes('Sign in through your newsroom identity provider')`), "logout");
   assert.equal(await js("Boolean(document.querySelector('article')||document.querySelector('[data-testid=ai-comparison]'))"), false);
   assert.deepEqual(errors, []);
-  const report = { results, keyboardScrolling: "passed", sameCommandRecovery: "passed", logoutDuringGeneration: "passed", liveProviderCalls: 0, errors };
+  const report = { results, keyboardScrolling: "passed", cancellationFocus: "passed", keyboardTabNavigation: "passed", normalizedPublishingText: "passed", sameCommandRecovery: "passed", logoutDuringGeneration: "passed", liveProviderCalls: 0, errors };
   if (artifacts) await writeFile(path.join(artifacts, "results.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {
