@@ -398,7 +398,7 @@ class AIAcceptanceTests(AIProcessingCase):
             alembic_command.downgrade(config, "20261101_04")
             before = connection.execute(text("SELECT input_payload::text,input_hash,output::text,output_hash FROM public.ai_processing_runs")).one()
             old_events = connection.execute(text("SELECT to_jsonb(e) FROM public.ai_processing_events e ORDER BY revision")).scalars().all()
-            alembic_command.upgrade(config, "head")
+            alembic_command.upgrade(config, "20261101_06")
             after = connection.execute(text("SELECT input_payload::text,input_hash,output::text,output_hash FROM public.ai_processing_runs")).one()
             new_events = connection.execute(text("SELECT to_jsonb(e)-'result' FROM public.ai_processing_events e ORDER BY revision")).scalars().all()
             self.assertEqual(before, after)

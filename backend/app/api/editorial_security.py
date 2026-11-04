@@ -24,6 +24,11 @@ async def get_editorial_principal(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Security(_bearer)],
 ) -> EditorialPrincipal:
+    if getattr(request.app.state, "cookie_auth_enabled", False):
+        principal = getattr(request.state, "editorial_principal", None)
+        if not isinstance(principal, EditorialPrincipal):
+            raise HTTPException(401, "Editorial authentication is required.")
+        return principal
     if credentials is None:
         raise HTTPException(401, "Editorial authentication is required.", headers={"WWW-Authenticate": "Bearer"})
     try:

@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import unittest
+import tempfile
+import shutil
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
@@ -17,9 +19,19 @@ from app.database.session import create_database_engine, create_session_factory,
 from app.models import CollectedArticle, CollectionRun, CollectionSourceResult, NewsSource, Story, StoryArticle
 
 
-def alembic_config(connection):
+def alembic_config(connection, *, include_auth=False):
     config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     config.attributes["connection"] = connection
+    config.attributes["legacy_editorial_schema_only"] = not include_auth
+    if not include_auth:
+        # Historical downgrade/autogenerate regressions exercise the original
+        # reversible graph. Revision 07 is tested separately and never downgraded.
+        directory = tempfile.TemporaryDirectory(prefix="hwn-legacy-migrations-")
+        config.attributes["legacy_versions_directory"] = directory
+        for source in (Path(__file__).resolve().parents[2] / "alembic" / "versions").glob("*.py"):
+            if source.name.startswith(("20261030_", "20261101_")):
+                shutil.copy2(source, Path(directory.name) / source.name)
+        config.set_main_option("version_locations", directory.name)
     return config
 
 
@@ -40,7 +52,7 @@ class PostgresCase(unittest.TestCase):
                 raise RuntimeError("Integration tests require an unmigrated test database.")
         cls.factory = create_session_factory(cls.engine)
         with cls.engine.begin() as connection:
-            command.upgrade(alembic_config(connection), "head")
+            command.upgrade(alembic_config(connection), "20261101_06")
         cls.addClassCleanup(cls.remove_test_schema)
 
     @classmethod
@@ -300,9 +312,9 @@ class PostgreSQLMigrationTests(PostgresCase):
             config = alembic_config(connection)
             self.assertEqual(set(inspect(connection).get_table_names()) - {"alembic_version"},
                              {table.name for table in Base.metadata.sorted_tables})
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
             command.check(config)
             command.downgrade(config, "base")
             self.assertEqual(set(inspect(connection).get_table_names()), {"alembic_version"})
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
             command.check(config)

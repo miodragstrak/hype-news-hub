@@ -357,7 +357,7 @@ class TrustedSchemaTests(PersistentCollectionCase):
             connection.execute(text(f'CREATE TABLE "{schema}".alembic_version (version_num text)'))
             connection.execute(text(f'INSERT INTO "{schema}".alembic_version VALUES (\'untrusted\')'))
             connection.execute(text(f'SET LOCAL search_path TO "{schema}", public'))
-            command.upgrade(alembic_config(connection), 'head')
+            command.upgrade(alembic_config(connection), '20261101_06')
             command.check(alembic_config(connection))
             self.assertEqual(connection.execute(text(f'SELECT version_num FROM "{schema}".alembic_version')).scalar_one(), 'untrusted')
         self.assert_real_approved_reads()

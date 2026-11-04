@@ -1,19 +1,16 @@
 FROM node:24-alpine AS build
 WORKDIR /app
-ARG VITE_API_URL
-ENV VITE_API_URL=$VITE_API_URL VITE_API_BASE_URL="" VITE_DEMO_MODE=false
-RUN node -e "const u=new URL(process.env.VITE_API_URL); if(u.protocol!=='https:'||u.origin!==process.env.VITE_API_URL)throw Error('An explicit HTTPS origin is required');"
 COPY package.json package-lock.json ./
 RUN npm ci
-COPY index.html tsconfig.json tsconfig.node.json vite.config.ts vite.client-preview.config.ts vercel.client-preview.json tailwind.config.ts postcss.config.js ./
+COPY index.html tsconfig.json tsconfig.node.json vite.config.ts vite.selfhosted.config.ts tailwind.config.ts postcss.config.js ./
 COPY src ./src
 COPY public ./public
-RUN npm run build
+RUN npm run build:selfhosted
 
 FROM node:24-alpine
 WORKDIR /app
 RUN npm install -g serve@14.2.4
-COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/dist-selfhosted ./dist
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

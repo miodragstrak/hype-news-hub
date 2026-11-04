@@ -1,13 +1,12 @@
-# OPTIONAL REFERENCE ONLY: Nginx is not assumed installed. Do not install this as-is.
-# Adapt equivalent routing/access policy to the administrator's existing ingress.
-# Replace every __PLACEHOLDER__; keep deny-all until Sprint 14B access review.
+# Reference for the confirmed Nginx ingress. Do not install this as-is.
+# Replace every __PLACEHOLDER__ and review before removing deny-all.
 server {
     listen 443 ssl;
     server_name __INTERNAL_HOSTNAME__;
     ssl_certificate __CERTIFICATE_PATH__;
     ssl_certificate_key __PRIVATE_KEY_PATH__;
 
-    deny all; # Intentional. Replace only with reviewed VPN/SSO ingress protection in 14B.
+    deny all; # Remove only after authenticated application, bootstrap and HTTPS checks pass.
     client_max_body_size 1m;
     add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -21,7 +20,9 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Real-IP $remote_addr;
+        # Always overwrite these headers. The API trusts only configured Nginx peer IPs.
+        proxy_set_header Cookie $http_cookie;
         proxy_cache off;
         proxy_next_upstream off;
         proxy_connect_timeout 5s;

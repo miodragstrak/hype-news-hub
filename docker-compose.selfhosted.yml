@@ -63,6 +63,9 @@ services:
       APP_ENV: production
       NEWS_STORAGE_BACKEND: postgres
       AI_PROCESSING_PROVIDER: disabled
+      AUTH_ENABLED: ${HNW_AUTH_ENABLED:-false}
+      AUTH_SESSION_SECONDS: ${HNW_AUTH_SESSION_SECONDS:-28800}
+      AUTH_TRUSTED_PROXY_IPS: ${HNW_TRUSTED_PROXY_IPS:-}
       BACKEND_CORS_ORIGINS: ${HNW_PUBLIC_ORIGIN:?Set the internal HTTPS origin}
       BACKEND_CORS_ORIGIN_REGEX: ""
       POSTGRES_HOST: news-db
@@ -74,7 +77,6 @@ services:
       DATABASE_POOL_SIZE: "3"
       DATABASE_MAX_OVERFLOW: "0"
       DATABASE_POOL_TIMEOUT_SECONDS: "3"
-      FORWARDED_ALLOW_IPS: ${HNW_TRUSTED_PROXY_IPS:-127.0.0.1}
     secrets: [db_runtime_password]
     networks: [application, database]
     depends_on:
@@ -91,8 +93,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.selfhosted
-      args:
-        VITE_API_URL: ${HNW_PUBLIC_ORIGIN:?Set the internal HTTPS origin}
     restart: unless-stopped
     init: true
     read_only: true

@@ -1,4 +1,4 @@
-"""Sprint 14A composition: infrastructure can be checked, application access stays closed."""
+"""Isolated self-hosted composition: application access requires configured session authentication."""
 from urllib.parse import urlsplit
 
 from fastapi.responses import JSONResponse
@@ -27,12 +27,29 @@ def create_selfhosted_app(config=None):
     from app.main import create_app
     from app.api.readiness import router
     application = create_app(config)
+    application.router.redirect_slashes = False
     application.include_router(router)
+
+    if config.auth_enabled:
+        from app.api.authentication import install_authentication, router as auth_router
+        from app.services.authentication import Authentication, SessionIdentityVerifier
+        from fastapi.exceptions import RequestValidationError
+        service = Authentication(application.state.news_repository)
+        verifier = SessionIdentityVerifier(service)
+        application.state.authentication = service
+        application.state.editorial_identity_verifier = verifier
+        install_authentication(application, service, verifier, config)
+        application.include_router(auth_router)
+
+        @application.exception_handler(RequestValidationError)
+        async def safe_validation(request, exc):
+            return JSONResponse({"detail": "Invalid request."}, status_code=422, headers={"Cache-Control": "no-store"})
+
+        return application
 
     @application.middleware("http")
     async def activation_gate(request, call_next):
-        # No environment switch removes this gate. Sprint 14B must compose a real
-        # identity verifier and verified ingress before enabling application routes.
+        # Authentication disabled: never expose the operational application.
         if request.url.path not in {"/", "/ready"}:
             return JSONResponse({"detail": "Self-hosted editorial access is not activated."}, status_code=503,
                                 headers={"Cache-Control": "no-store"})

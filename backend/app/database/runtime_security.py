@@ -28,8 +28,9 @@ TABLE_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFEREN
 COLUMN_PRIVILEGES = ("SELECT", "INSERT", "UPDATE", "REFERENCES")
 
 
-def _public_table_grants(connection):
+def _public_table_grants(connection, policy=None):
     """Report shared ACLs; provisioning must never silently rewrite other users' access."""
+    policy = RUNTIME_PRIVILEGE_ALLOWLIST if policy is None else policy
     return connection.execute(text("""SELECT c.relname, NULL AS attname, acl.privilege_type
         FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) acl
@@ -40,8 +41,7 @@ def _public_table_grants(connection):
         JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
         CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) acl
         WHERE n.nspname = 'public' AND c.relname::pg_catalog.text = ANY(:tables) AND acl.grantee = 0
-        ORDER BY 1, 2, 3"""), {"tables": list(RUNTIME_PRIVILEGE_ALLOWLIST)}).all()
-
+        ORDER BY 1, 2, 3"""), {"tables": list(policy)}).all()
 
 def _public_create_grants(connection):
     return connection.execute(text("""SELECT 'database', d.datname FROM pg_catalog.pg_database d
@@ -52,8 +52,9 @@ def _public_create_grants(connection):
         WHERE acl.grantee = 0 AND acl.privilege_type = 'CREATE' ORDER BY 1, 2""")).all()
 
 
-def assert_runtime_role(connection, *, role_name: str | None = None) -> None:
+def assert_runtime_role(connection, *, role_name: str | None = None, policy=None) -> None:
     """Check effective rights, including PUBLIC and SET ROLE membership paths."""
+    policy = RUNTIME_PRIVILEGE_ALLOWLIST if policy is None else policy
     unsafe = connection.execute(text("""WITH runtime AS (
         SELECT oid, rolname FROM pg_catalog.pg_roles WHERE rolname = coalesce(CAST(:role_name AS pg_catalog.name), current_user)
     ), managed AS (
@@ -81,14 +82,14 @@ def assert_runtime_role(connection, *, role_name: str | None = None) -> None:
         OR EXISTS (SELECT 1 FROM managed c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
             CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) acl
             WHERE a.attnum > 0 AND NOT a.attisdropped AND acl.grantee = 0)
-    )"""), {"role_name": role_name, "policy": json.dumps(RUNTIME_PRIVILEGE_ALLOWLIST),
+    )"""), {"role_name": role_name, "policy": json.dumps(policy),
             "table_privileges": list(TABLE_PRIVILEGES), "column_privileges": list(COLUMN_PRIVILEGES)}).scalar_one()
     if unsafe:
         raise ValueError("PostgreSQL mode requires a restricted runtime role without database/schema CREATE, ownership, memberships, "
                          "PUBLIC table grants or privileges outside the runtime allowlists (including grant options).")
 
-
-def provision_runtime_role(config: Settings, role: str, password: str) -> None:
+def provision_runtime_role(config: Settings, role: str, password: str, *, policy=None) -> None:
+    policy = RUNTIME_PRIVILEGE_ALLOWLIST if policy is None else policy
     if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", role) or role.startswith("pg_") or role == config.postgres_user:
         raise ValueError("Choose a separate, non-system PostgreSQL runtime role name.")
     if len(password) < 24:
@@ -103,7 +104,7 @@ def provision_runtime_role(config: Settings, role: str, password: str) -> None:
                                  "Review shared consumers, replace intentional access with named-role grants, explicitly "
                                  "revoke PUBLIC CREATE on the reported database/schemas, then rerun provisioning. "
                                  "No shared ACLs were changed. " + details)
-            public_grants = _public_table_grants(connection)
+            public_grants = _public_table_grants(connection, policy)
             if public_grants:
                 details = "; ".join(f"public.{table}" + (f"({column})" if column else "") + f": {privilege}"
                                     for table, column, privilege in public_grants)
@@ -153,11 +154,11 @@ def provision_runtime_role(config: Settings, role: str, password: str) -> None:
                 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
                 WHERE n.nspname = 'public' AND c.relname::pg_catalog.text = ANY(:tables) GROUP BY c.relname"""),
-                {"tables": list(RUNTIME_PRIVILEGE_ALLOWLIST)}).all()
+                {"tables": list(policy)}).all()
             columns = dict(columns)
-            if columns.keys() != RUNTIME_PRIVILEGE_ALLOWLIST.keys():
+            if columns.keys() != policy.keys():
                 raise ValueError("Apply all Alembic migrations before provisioning the runtime role.")
-            for table, privileges in RUNTIME_PRIVILEGE_ALLOWLIST.items():
+            for table, privileges in policy.items():
                 target = "public." + engine.dialect.identifier_preparer.quote(table)
                 names = ", ".join(engine.dialect.identifier_preparer.quote(name) for name in columns[table])
                 # Table revocation alone leaves column ACLs behind. RESTRICT
@@ -169,10 +170,9 @@ def provision_runtime_role(config: Settings, role: str, password: str) -> None:
                 f"uuid, uuid, text, text, text, text, text, timestamptz, text, timestamptz) TO {quoted}"))
             # Validate the named role, not this owner connection. Unexpected grant
             # paths/dependencies fail the transaction instead of reporting success.
-            assert_runtime_role(connection, role_name=role)
+            assert_runtime_role(connection, role_name=role, policy=policy)
     finally:
         engine.dispose()
-
 
 if __name__ == "__main__":
     provision_runtime_role(Settings(), os.environ.get("POSTGRES_RUNTIME_USER", "hype_news_hub_runtime"), os.environ.get("POSTGRES_RUNTIME_PASSWORD", ""))

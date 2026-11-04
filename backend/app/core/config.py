@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     story_match_max_gap_hours: float = Field(default=48, gt=0, allow_inf_nan=False)
     news_storage_backend: Literal["memory", "postgres"] = "memory"
     ai_processing_provider: Literal["disabled", "mock", "gemini"] = "disabled"
+    auth_enabled: bool = False
+    auth_session_seconds: int = Field(default=28800, ge=300, le=86400)
+    auth_trusted_proxy_ips: str = ""
     ai_processing_timeout_seconds: float = Field(default=5, gt=0, le=30, allow_inf_nan=False)
     gemini_api_key: SecretStr = SecretStr("")
     # No model default: choose an available text model explicitly, after review.

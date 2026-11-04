@@ -1,29 +1,27 @@
-# Sprint 14A: self-hosted infrastructure preparation
+# Self-hosted deployment: Sprint 14A infrastructure and Sprint 14B authentication
 
-This is an **unactivated infrastructure foundation**, not approval to deploy.
-No remote server was inspected. AskHype's ports, proxy, identity provider, storage,
-network ranges and spare resources must be confirmed by its administrator.
+This is infrastructure and authentication preparation, **not approval to deploy**.
+No remote server was inspected. AskHype's ports, storage, network ranges and
+spare resources must be confirmed by its administrator. Nginx
+is confirmed, but its actual configuration has not been accessed.
 The existing development Compose file, Render Dockerfile, Vercel configuration and
 client-preview build are independent and unchanged.
 
-## Activation boundary — Sprint 14B blockers
+## Application authentication — Sprint 14B
 
-The self-hosted API uses `app.selfhosted:create_selfhosted_app --factory`.
-It requires production/PostgreSQL configuration, one HTTPS origin, a disabled
-Vercel CORS regex and disabled AI. It **denies every application request with 503**;
-only `GET /` (liveness) and `GET /ready` (infrastructure readiness) can succeed.
-There is no environment switch to bypass this gate and no test identity provider.
-`/ready` returning 200 does **not** mean editors can log in or use the application.
-Its response explicitly says `scope=infrastructure`, `editorial_access=blocked`.
+The confirmed ingress is Nginx, terminating HTTPS. P0 uses application-level
+email/password authentication; it does not require VPN/SSO or an external IdP.
+See [application authentication](application-authentication.md) for session, CSRF,
+role, rate-limit and API contracts and the administrator bootstrap procedure.
 
-Sprint 14B must connect the frontend identity adapter and the backend's verified
-identity implementation, approve server-side role mapping, protect the entire
-ingress (including legacy collection/diagnostics), and only then replace the
-pre-activation gate in a reviewed release. Never switch to the unguarded demo
-entry point or remove access protection to make a smoke test pass. Protect both
-the UI and `/api`; no database or API port may be reachable from the internet.
-AI remains disabled; no GPT, Gemini activation, WordPress publishing, collection
-scheduler or new infrastructure service is installed by this sprint.
+`HNW_AUTH_ENABLED=false` retains the original application-wide 503 gate. Enabling
+it installs the real PostgreSQL session verifier and requires one HTTPS origin,
+explicit trusted Nginx peer IPs, migration 07, correct runtime grants and an active
+initial administrator. Readiness verifies database/schema/grants and reports
+`editorial_access=authenticated` when enabled, or `blocked` otherwise. It does not
+prove the external Nginx/TLS configuration is correct. Never activate by switching
+to the unguarded demo entry point. There are no hardcoded accounts or auth bypasses.
+AI remains disabled; WordPress publishing and scheduling are not added.
 
 ## Layout and isolation
 
@@ -57,7 +55,7 @@ do not restart. An unhealthy status alone does not restart a running container.
 ## Administrator preflight and protected settings
 
 Confirm Ubuntu/Docker/Compose versions, filesystem capacity/permissions, Docker
-network overlap, backup destinations, existing ingress and identity service,
+network overlap, backup destinations, existing Nginx layout and account administration,
 unused loopback ports and AskHype baseline health. Docker/Compose, Python 3 and
 OpenSSL commands below are prerequisites, not assumed preinstalled services.
 Use a separate application directory and approved release. Do not run broad
@@ -68,10 +66,10 @@ for example `/etc/hype-world-news/production.env` (mode 0600). Set the unique
 project name, reviewed release identifier, real internal HTTPS origin with no
 path/trailing slash, dedicated DB names and absolute secret file paths. The
 `.invalid` hostname and release placeholder are examples, never deployment values.
-The frontend compiles that origin with `VITE_DEMO_MODE=false`; changing the
-container environment later cannot change its API URL. The normal production
-build is used, **not** `build:client-preview`. Do not set a Docker service hostname
-or append `/api` to the browser API base URL.
+The frontend uses `build:selfhosted`, forces demo mode off and uses same-origin
+relative API requests. The origin is server-side CSRF configuration, not a browser
+secret. Do not use `build:client-preview` or a Docker service hostname as the API.
+
 
 Create two distinct cryptographically random password files, at least 24 characters,
 using protected temporary files and `openssl rand -hex 32` (never display them).
@@ -108,6 +106,8 @@ hnw_compose --profile tools run --rm news-migrate python -B -m app.selfhosted_to
 hnw_compose --profile tools run --rm news-migrate
 hnw_compose --profile tools run --rm news-migrate python -B -m app.selfhosted_tools migrate check
 hnw_compose --profile tools run --rm news-provision
+hnw_compose --profile tools run --rm news-migrate python -B -m app.selfhosted_tools bootstrap-admin
+# After reviewing TLS/origin/proxy settings, set HNW_AUTH_ENABLED=true in the protected env file.
 hnw_compose up -d --wait news-api news-web
 ```
 
@@ -116,10 +116,10 @@ Existing databases require a backup and review of the current revision before
 upgrade. Stop the procedure on any nonzero command exit. Migrations run once per release as explicit owner tools, never from API
 startup and never concurrently. The complete chain is:
 
-`20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06`.
+`20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07`.
 
-No existing revision is changed by 14A. Runtime provisioning applies existing
-least-privilege policies and additionally grants **SELECT(version_num) only** on
+No previous revision is changed by 14B. Migration 07 is forward-only. Runtime provisioning applies existing
+least-privilege policies plus SELECT/INSERT/UPDATE on the three auth tables and additionally grants **SELECT(version_num) only** on
 `public.alembic_version` for readiness. It does not grant migration/DDL, DELETE,
 TRUNCATE, grant options or mutable history access. The existing provisioning and
 the marker grant each use transactions; rerunning completes a partially failed
@@ -131,11 +131,12 @@ migration and verify again. Bootstrap credentials never run FastAPI.
 ## Readiness, ingress and verification
 
 `/ready` checks connectivity, trusted runtime permissions, exact Alembic head,
-all 14 managed tables/columns and required table grants, without writes or external
+all 17 managed tables/columns and required table grants, without writes or external
 calls. The runtime may read only the migration marker, not change it. Missing
 schema/grants, wrong revision, owner credentials and unsafe permissions fail with
 generic 503; no exceptions, SQL, credentials or connection details are returned.
-There are no paid/provider, source or authentication requests in readiness.
+No paid/provider or source requests are made in readiness. With authentication
+enabled, it also requires an active administrator in the local database.
 
 ```bash
 hnw_compose ps
@@ -143,14 +144,13 @@ hnw_compose exec -T news-api python -c "import urllib.request; print(urllib.requ
 hnw_compose logs --tail 100 news-api news-web news-db
 ```
 
-Verify API application requests return the intentional pre-activation 503 and do
-not mutate data. Verify the normal frontend serves and direct routes refresh,
-but authentication/editorial commands remain unavailable. Check restart persistence,
-runtime UID, resource limits, rotated logs and no public DB/API socket. Configure
-existing host monitoring to alert on unhealthy containers, restarts/OOM, disk and
-volume growth, backup failures and AskHype degradation; no monitoring service is
-installed here. After 14B, separately validate real identity, Reader/Editor/Reviewer
-restrictions and the full collection/save/review workflow.
+Verify disabled authentication retains the intentional 503 gate. With enabled
+configuration, anonymous API requests must return 401; valid editors can read/edit
+but cannot administer users or approve. Verify login, CSRF rejection, logout and
+immediate deactivation/role changes using HTTPS. Check restart persistence, runtime
+UID, limits and no public DB/API socket. Configure existing host monitoring for
+health, OOM/restarts, disk growth, backups and AskHype degradation. Complete the
+full editor → separate admin review workflow before admitting production users.
 
 For a **host-based** proxy only, first select two free ports and set
 `HNW_WEB_BIND_PORT` and `HNW_API_BIND_PORT`. Add
@@ -159,15 +159,15 @@ only 127.0.0.1, never wildcard addresses. Do not expose them in host firewall ru
 For a containerized ingress, have the administrator provide a narrowly scoped
 network integration instead; do not guess or attach to AskHype's database network.
 
-`deploy/selfhosted/nginx.conf.example` is an **optional routing example**, not an
-assumption that Nginx exists. It deliberately denies all access until 14B and has
-mandatory placeholders. Adapt its rules to the actual ingress: same origin,
-unchanged `/api` paths (including bare `/api`), SPA frontend routes, TLS, private
-readiness/docs, authorization forwarding, no command retries/caching, explicit
-request/time limits and security headers. Trust only actual proxy IPs/CIDRs in
-`HNW_TRUSTED_PROXY_IPS`, never `*`. Review CSP when the real identity SDK is chosen.
-Validate the actual ingress configuration before reloading it. Do not install
-another proxy or change shared settings without that review.
+`deploy/selfhosted/nginx.conf.example` is a template for the confirmed Nginx.
+It retains deny-all and mandatory placeholders until operator review. Preserve
+same-origin `/api` paths, Secure cookie forwarding, exact Origin/CSRF headers,
+`X-Real-IP $remote_addr`, no command retries/caching, TLS and private health/docs.
+Set `HNW_TRUSTED_PROXY_IPS` to actual peer addresses seen by the container, never
+`*` or a default route. Uvicorn disables proxy header processing; the auth layer
+alone validates the trusted Nginx peer for login rate limiting. Remove deny-all
+only after reviewed staging authentication checks, then validate Nginx before its
+operator reload. No changes to Nginx itself are performed by this repository task.
 
 ## Backup and verified recovery
 
@@ -222,7 +222,8 @@ cutover. Do not delete the source backup or active database during rehearsal.
 First run with isolated staging settings, secrets and volume, with ingress denied.
 Record images/configuration, baseline AskHype health and a successful restore test.
 Reboot/restart-test persistence and verify migrations/provisioning before access
-activation. Sprint 14B is a separate security gate, not an environment toggle.
+activation. Production activation requires independent authentication review and operator
+TLS/proxy checks; AUTH_ENABLED is not an authentication bypass.
 Review image and dependency advisories before activation. The existing frontend
 lockfile reported unresolved advisories during 14A validation (including build
 tooling and React Router); this infrastructure sprint does not update dependencies.
@@ -242,7 +243,7 @@ hnw_compose stop news-web news-api
 hnw_compose up -d --no-build --wait news-api news-web
 ```
 
-Do not automatically downgrade migrations: 04 removes AI data, and 05/06 can refuse
+Do not automatically downgrade migrations: 07 is forward-only, 04 removes AI data, and 05/06 can refuse
 downgrades involving accepted/non-mock history. Do not run `down --volumes`, reuse
 AskHype's project, or perform global Docker cleanup. No automatic rollback is installed.
 

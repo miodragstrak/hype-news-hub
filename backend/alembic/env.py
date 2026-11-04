@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.database.base import Base
 from app.database.session import TRUSTED_SEARCH_PATH
 from app import models  # Register all mapped tables in Base.metadata.
+from app.models.auth import AuthBase
 
 config = context.config
 
@@ -19,7 +20,10 @@ if config.config_file_name is not None:
 # arguments. Normalize only Alembic's comparison copy to that representation;
 # runtime models stay qualified and no historical revision needs rewriting.
 target_metadata = MetaData(naming_convention=Base.metadata.naming_convention)
-for table in Base.metadata.sorted_tables:
+comparison_tables = list(Base.metadata.sorted_tables)
+if not config.attributes.get("legacy_editorial_schema_only", False):
+    comparison_tables += list(AuthBase.metadata.sorted_tables)
+for table in comparison_tables:
     if table.schema != "public":
         raise ValueError("Application migrations require an explicitly reviewed trusted-schema policy.")
     table.to_metadata(target_metadata, schema=None,

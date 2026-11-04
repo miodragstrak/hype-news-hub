@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./apiClient";
+import { sessionFetch } from "./sessionTransport";
 import type { AcceptAiSuggestion, AiSuggestion, AiSummary, CreateAiSuggestion } from "../types/ai";
 import type { EditorialStoryWorkspace } from "../types/news";
 import type { CreateDraftCommand, DecisionCommand, EditorialCapabilities, EditorialDraft, EditorialEvent, EditorialReceipt, EditorialVersion, EditorialVersionSummary, NegativeDecisionCommand, SaveRevisionCommand, StorySource, VersionCommand } from "../types/editorial";
@@ -23,10 +24,11 @@ export function editorialErrorMessage(error: unknown): string {
 }
 
 export class EditorialApi {
-  constructor(private readonly token: () => Promise<string | null>, private readonly baseUrl = API_BASE_URL) {}
+  constructor(private readonly token: () => Promise<string | null>, private readonly baseUrl = API_BASE_URL,
+              private readonly authentication: "bearer" | "session" = "bearer") {}
 
   private async request<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
-    if (!this.baseUrl) throw new EditorialApiError(503, "Editorial backend is not configured.");
+    if (!this.baseUrl && this.authentication !== "session") throw new EditorialApiError(503, "Editorial backend is not configured.");
     let token: string | null;
     try { token = await this.token(); }
     catch (error) { if (error instanceof EditorialApiError) throw error; throw new EditorialApiError(401, "Editorial session is unavailable."); }
@@ -37,11 +39,12 @@ export class EditorialApi {
     signal?.addEventListener("abort", cancel, { once: true });
     const deadline = setTimeout(cancel, 60_000);
     try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
+      const init: RequestInit = {
         method: body === undefined ? "GET" : "POST", signal: abort.signal, cache: "no-store", credentials: "omit", redirect: "error",
-        headers: { Authorization: `Bearer ${token}`, Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+        headers: { ...(this.authentication === "bearer" ? { Authorization: `Bearer ${token}` } : {}), Accept: "application/json", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
+      };
+      const response = this.authentication === "session" ? await sessionFetch(path, init) : await fetch(`${this.baseUrl}${path}`, init);
       // Do not reflect server bodies: errors may contain private input or connection details.
       if (!response.ok) throw new EditorialApiError(response.status, "Editorial request rejected.");
       try { return await response.json() as T; }

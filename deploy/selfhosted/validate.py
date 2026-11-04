@@ -43,7 +43,8 @@ with tempfile.TemporaryDirectory(prefix="hnw-compose-check-") as directory:
     assert api["environment"]["BACKEND_CORS_ORIGIN_REGEX"] == ""
     assert {s["source"] for s in api["secrets"]} == {"db_runtime_password"}
     assert api["read_only"] and api["cap_drop"] == ["ALL"]
-    assert base["services"]["news-web"]["build"]["args"]["VITE_API_URL"] == settings["HNW_PUBLIC_ORIGIN"]
+    assert api["environment"]["AUTH_ENABLED"] == "false"
+    assert base["services"]["news-web"]["build"]["dockerfile"] == "Dockerfile.selfhosted"
     for s in base["services"].values():
         assert "POSTGRES_PASSWORD" not in s.get("environment", {})
     overlay = config(["-f", str(root / "docker-compose.selfhosted.host-proxy.yml")])

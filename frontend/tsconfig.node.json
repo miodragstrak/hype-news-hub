@@ -8,5 +8,5 @@
     "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "tailwind.config.ts"]
+  "include": ["vite.config.ts", "vite.selfhosted.config.ts", "tailwind.config.ts"]
 }

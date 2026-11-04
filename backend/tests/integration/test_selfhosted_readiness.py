@@ -5,10 +5,11 @@ from sqlalchemy.exc import ProgrammingError
 from app.core.config import Settings
 from app.selfhosted import create_selfhosted_app
 from app.selfhosted_tools import provision_selfhosted_role
-from tests.integration.test_persistent_collection import PersistentCollectionCase, source, post
+from tests.integration.test_persistent_collection import source, post
+from tests.integration.auth_support import AuthDatabaseCase
 
 
-class SelfhostedReadinessTests(PersistentCollectionCase):
+class SelfhostedReadinessTests(AuthDatabaseCase):
     def config(self, **values):
         return self.runtime_config.model_copy(update=dict(app_env="production", backend_cors_origins="https://news.example.invalid",
             backend_cors_origin_regex=None, ai_processing_provider="disabled") | values)
@@ -29,7 +30,7 @@ class SelfhostedReadinessTests(PersistentCollectionCase):
         self.assertEqual(self.readiness().status_code, 200)
 
         with self.repository.engine.connect() as connection:
-            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "20261101_06")
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "20261104_07")
             connection.rollback()
             for sql in ["UPDATE public.alembic_version SET version_num=version_num", "DELETE FROM public.alembic_version", "TRUNCATE public.alembic_version"]:
                 with self.assertRaises(ProgrammingError) as denied:
@@ -63,7 +64,7 @@ class SelfhostedReadinessTests(PersistentCollectionCase):
             self.assertEqual(self.readiness().status_code, 503)
         finally:
             with self.engine.begin() as c:
-                c.execute(text("UPDATE public.alembic_version SET version_num='20261101_06'"))
+                c.execute(text("UPDATE public.alembic_version SET version_num='20261104_07'"))
         with self.engine.begin() as c:
             c.execute(text(f'REVOKE INSERT ON public.ai_processing_runs FROM "{self.role}"'))
         self.assertEqual(self.readiness().status_code, 503)

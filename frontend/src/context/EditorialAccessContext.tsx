@@ -4,6 +4,8 @@ import type { EditorialCapabilities } from "../types/editorial";
 
 /** Implement with a trusted identity SDK. No actor IDs/roles or browser token settings. */
 export interface EditorialIdentityAdapter {
+  readonly authentication?: "session";
+  getCsrfToken?(): Promise<string | null>;
   getSnapshot(): { readonly key: string } | null;
   subscribe(listener: () => void): () => void;
   getAccessToken(): Promise<string | null>;
@@ -91,7 +93,7 @@ class IdentityConnection {
     // belong to the session that initiated this token request.
     const isCurrentRequest = () => generation === this.generation && sessionRevision === this.value.revision;
     let token: string | null;
-    try { token = await this.identity.getAccessToken(); }
+    try { token = this.identity.authentication === "session" ? await this.identity.getCsrfToken?.() ?? null : await this.identity.getAccessToken(); }
     catch { if (isCurrentRequest()) this.fail(); throw identityError; }
     if (!isCurrentRequest()) throw identityError;
     this.assertSession(key, sessionRevision);
@@ -109,7 +111,7 @@ export function EditorialAccessProvider({ identity, children }: { identity?: Edi
   const session = useSyncExternalStore(connection?.subscribe ?? subscribeNone, connection?.getSnapshot ?? empty, empty);
   const sessionKey = session?.key ?? "";
   const [result, setResult] = useState<{ client: EditorialApi | null; epoch: number; capabilities: EditorialCapabilities | null; error: unknown }>({ client: null, epoch: -1, capabilities: null, error: null });
-  const client = useMemo(() => connection && session?.state === "ready" && sessionKey ? new EditorialApi(() => connection.token(sessionKey, session.revision)) : null, [connection, session?.state, session?.revision, sessionKey]);
+  const client = useMemo(() => connection && session?.state === "ready" && sessionKey ? new EditorialApi(() => connection.token(sessionKey, session.revision), undefined, identity?.authentication === "session" ? "session" : "bearer") : null, [connection, identity, session?.state, session?.revision, sessionKey]);
 
   useEffect(() => {
     if (!client) return;

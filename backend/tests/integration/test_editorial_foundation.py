@@ -373,7 +373,7 @@ class EditorialFoundationTests(PersistentCollectionCase):
         finally:
             application.state.news_repository.engine.dispose()
         with self.engine.begin() as connection:
-            command.upgrade(alembic_config(connection), "head")
+            command.upgrade(alembic_config(connection), "20261101_06")
             command.check(alembic_config(connection))
         provision_runtime_role(Settings(_env_file=None), self.role, self.runtime_config.postgres_password.get_secret_value())
         self.assertEqual(self.collection_snapshot(), before)
@@ -382,7 +382,7 @@ class EditorialFoundationTests(PersistentCollectionCase):
             command.downgrade(alembic_config(connection), "20261030_02")
         self.assertEqual(self.collection_snapshot(), before)
         with self.engine.begin() as connection:
-            command.upgrade(alembic_config(connection), "head")
+            command.upgrade(alembic_config(connection), "20261101_06")
             command.check(alembic_config(connection))
         provision_runtime_role(Settings(_env_file=None), self.role, self.runtime_config.postgres_password.get_secret_value())
         self.assertEqual(self.collection_snapshot(), before)

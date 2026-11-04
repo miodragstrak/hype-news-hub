@@ -24,6 +24,9 @@ htmlcov/
 
 # Build artifacts
 frontend/dist/
+frontend/dist-selfhosted/
+frontend/vite.selfhosted.config.js
+frontend/vite.selfhosted.config.d.ts
 backend/.alembic/
 frontend/*.tsbuildinfo
 frontend/vite.config.js

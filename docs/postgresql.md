@@ -433,7 +433,7 @@ docker compose --profile tools run --rm migrate alembic check
 docker compose --profile tools run --rm migrate alembic history
 ```
 
-The six revisions run in order: `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06`.
+The seven revisions run in order: `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07`. Revision 07 adds self-hosted authentication and is forward-only.
 The initial revision is `20261030_01`; Sprint 15B adds `20261030_02`, which
 backfills literal and normalized aliases and replaces unbounded text uniqueness
 with generated keys. Existing UUIDs and original source/article URLs are
@@ -611,18 +611,19 @@ deleted data. Test restores regularly instead of relying only on successful dump
    Ubuntu host (which may also host AskHype), protected owner/runtime
    secrets, private networking, durable storage, scheduled encrypted off-host
    backups and a verified restore. No production infrastructure was provisioned.
-2. Upgrade through all six migrations (`01 → 02 → 03 → 04 → 05 → 06`), review existing ACLs,
+2. Upgrade through all seven migrations (`01 → 02 → 03 → 04 → 05 → 06 → 07`), review existing ACLs,
    re-provision/recheck runtime allowlists, and explicitly enable
    PostgreSQL mode. Keep Render on default memory until an approved cutover;
    memory history is not automatically imported and is lost on restart.
 
-3. Configure HTTPS/reverse proxy and the browser-accessible API URL at frontend
-   build time (existing Compose defaults target localhost). Keep database ports
+3. Configure Nginx HTTPS and same-origin `/api` routing using the separate
+   self-hosted Compose/runbook. Its frontend needs no API URL build variable;
+   existing local/demo Compose behavior remains separate. Keep database ports
    unpublished. Configure verified TLS if database traffic leaves the local host.
-4. Activate a verified production identity adapter and ingress controls before
-   exposing private editorial operations; the implemented boundary fails closed
-   without it. Public collection diagnostics retain their existing policy; review
-   ingress protection separately. Complete live-source UAT and any website-operator
+4. Bootstrap the first administrator and explicitly activate application sessions
+   only after configuring the exact HTTPS origin and trusted Nginx peer. Follow
+   [application authentication](application-authentication.md); no external IdP is
+   required. All operational APIs, including collection diagnostics, require login. Complete live-source UAT and any website-operator
    coordination for hypetv.rs/Hype Production; connector reliability/security
    changes are implemented in Sprint 15C, not permission provisioning.
 5. Define monitoring, storage/statement time limits, retention and eventual
@@ -647,3 +648,10 @@ authenticated PostgreSQL editorial workflow, approvals/version history and front
 are implemented separately. Production identity activation, controlled live Gemini
 enablement and WordPress Draft publishing remain separate activation/work items. Nothing in this
 sprint authorizes deployment.
+
+## Sprint 14B application accounts
+
+Revision `20261104_07` adds trusted-public-schema users, hashed sessions and bounded
+login throttles. It is forward-only. Follow [application authentication](application-authentication.md)
+for the self-hosted runtime grants, secure bootstrap, cookies/CSRF and rollback
+requirements. Earlier migration revisions are unchanged.

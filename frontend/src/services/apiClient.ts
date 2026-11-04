@@ -1,16 +1,17 @@
+import { hasSessionTransport, sessionFetch } from "./sessionTransport";
 const env = import.meta.env;
 
 export const API_BASE_URL = (env.VITE_API_URL?.trim() || env.VITE_API_BASE_URL?.trim() || "").replace(/\/+$/, "");
 export const DEMO_MODE = env.VITE_DEMO_MODE === "true";
 
 export async function requestJson<T>(path: string, errorMessage: string, init?: RequestInit): Promise<T> {
-  if (!API_BASE_URL) {
+  if (!API_BASE_URL && !hasSessionTransport()) {
     throw new Error("Backend connection is not configured.");
   }
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, init);
+    response = hasSessionTransport() ? await sessionFetch(path, init) : await fetch(`${API_BASE_URL}${path}`, init);
   } catch {
     throw new Error(`${errorMessage}: backend is unavailable.`);
   }

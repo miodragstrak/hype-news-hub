@@ -8,7 +8,8 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit --incremental false",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:selfhosted": "tsc -b && vite build --config vite.selfhosted.config.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.0",

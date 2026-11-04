@@ -137,7 +137,7 @@ class PersistenceCorrectnessTests(PersistentCollectionCase):
             article_id = connection.execute(text("INSERT INTO collected_articles (source_id, url, title) VALUES (:source, :url, 'Legacy article') RETURNING id"), {"source": source_id, "url": original}).scalar_one()
             story_id = connection.execute(text("INSERT INTO stories (headline) VALUES ('Legacy story') RETURNING id")).scalar_one()
             connection.execute(text("INSERT INTO story_articles (story_id, article_id, is_primary) VALUES (:story, :article, true)"), {"story": story_id, "article": article_id})
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
             command.check(config)
         provision_runtime_role(Settings(_env_file=None), self.role, self.runtime_config.postgres_password.get_secret_value())
         response = self.collect([source(posts=[post("", "https://source.invalid/item/", title="Updated legacy article")])])
@@ -222,14 +222,14 @@ class LegacyIdentityConflictTests(PersistentCollectionCase):
                 identities.append(connection.execute(text("INSERT INTO collected_articles (source_id, url, title) VALUES (:source, :url, 'Legacy') RETURNING id"), {"source": source_id, "url": url}).scalar_one())
             with self.assertRaisesRegex(RuntimeError, "Article identity conflict") as caught:
                 with connection.begin_nested():
-                    command.upgrade(config, "head")
+                    command.upgrade(config, "20261101_06")
             self.assertTrue(all(str(identity) in str(caught.exception) for identity in identities))
             self.assertIn("no aliases were written", str(caught.exception))
             self.assertEqual(connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one(), "20261030_01")
             self.assertNotIn("article_identities", inspect(connection).get_table_names())
             self.assertEqual(connection.execute(text("SELECT count(*) FROM collected_articles")).scalar_one(), 2)
             connection.execute(text("DELETE FROM collected_articles"))
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
 
     def test_normalized_source_conflict_aborts_without_reassigning_provenance(self):
         with self.engine.begin() as connection:
@@ -238,11 +238,11 @@ class LegacyIdentityConflictTests(PersistentCollectionCase):
                 connection.execute(text("INSERT INTO news_sources (name, url) VALUES ('Legacy', :url)"), {"url": url})
             with self.assertRaisesRegex(RuntimeError, "Normalized source identity conflict"):
                 with connection.begin_nested():
-                    command.upgrade(config, "head")
+                    command.upgrade(config, "20261101_06")
             self.assertNotIn("article_identities", inspect(connection).get_table_names())
             self.assertEqual(connection.execute(text("SELECT count(*) FROM news_sources")).scalar_one(), 2)
             connection.execute(text("DELETE FROM news_sources"))
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
 
     def test_malformed_legacy_url_reports_article_and_preserves_schema_for_repair(self):
         with self.engine.begin() as connection:
@@ -251,7 +251,7 @@ class LegacyIdentityConflictTests(PersistentCollectionCase):
             article_id = connection.execute(text("INSERT INTO collected_articles (source_id, url, title) VALUES (:source, 'https://legacy.invalid/?id=%', 'Legacy') RETURNING id"), {"source": source_id}).scalar_one()
             with self.assertRaisesRegex(RuntimeError, str(article_id)):
                 with connection.begin_nested():
-                    command.upgrade(config, "head")
+                    command.upgrade(config, "20261101_06")
             self.assertNotIn("article_identities", inspect(connection).get_table_names())
             connection.execute(text("UPDATE collected_articles SET url = 'https://legacy.invalid/fixed'"))
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")

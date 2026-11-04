@@ -296,7 +296,7 @@ class GeminiProcessingTests(AIProcessingCase):
             config=alembic_config(conn)
             command.downgrade(config,"20261101_05")
             old=conn.execute(text("SELECT input_payload::text,input_hash,output::text,output_hash FROM public.ai_processing_runs")).one()
-            command.upgrade(config,"head")
+            command.upgrade(config,"20261101_06")
             new=conn.execute(text("SELECT input_payload::text,input_hash,output::text,output_hash FROM public.ai_processing_runs")).one()
             self.assertEqual(old,new)
             command.check(config)

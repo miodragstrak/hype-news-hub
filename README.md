@@ -5,11 +5,13 @@ Internal application for aggregating and processing entertainment news.
 ## Self-hosted infrastructure preparation (Sprint 14A)
 
 The separate [self-hosted runbook](docs/selfhosted-deployment.md) covers isolated
-Compose services, non-root images, file secrets, all six migrations, restricted
-provisioning, readiness and backup/rollback. This stack is unactivated: application
-requests are denied until Sprint 14B production identity and ingress protection
-are implemented and reviewed. Existing development, Render and Vercel paths are
-unchanged. Do not combine the self-hosted and development Compose files.
+containers, non-root images, file secrets, migrations, provisioning and recovery.
+[Sprint 14B authentication](docs/application-authentication.md) adds PostgreSQL
+cookie sessions, Argon2id passwords and admin-created accounts. Authentication is
+disabled by default, preserving the application-wide deny gate; enabling it needs
+reviewed HTTPS/Nginx settings, revision 07, provisioning and initial admin bootstrap.
+The self-hosted build is isolated from existing Render/Vercel/client-preview modes.
+Do not combine self-hosted and development Compose files or deploy without review.
 
 ## Sprint 17A.2: private versioned editorial workflow
 

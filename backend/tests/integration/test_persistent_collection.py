@@ -356,7 +356,7 @@ class CollectionMigrationDataTests(PostgresCase):
             command.downgrade(config, "20261030_01")
             source_id = connection.execute(text("INSERT INTO news_sources (name, url) VALUES ('Legacy', 'https://legacy.invalid') RETURNING id")).scalar_one()
             article_id = connection.execute(text("INSERT INTO collected_articles (source_id, external_id, url, canonical_url, title) VALUES (:source, '00042', 'https://legacy.invalid/item', 'https://legacy.invalid/item', 'Legacy article') RETURNING id"), {"source": source_id}).scalar_one()
-            command.upgrade(config, "head")
+            command.upgrade(config, "20261101_06")
             self.assertEqual(connection.execute(text("SELECT id FROM collected_articles")).scalar_one(), article_id)
             self.assertEqual(connection.execute(text("SELECT count(*) FROM article_identities")).scalar_one(), 2)
             self.assertEqual(connection.execute(text("SELECT length(external_id_key) FROM collected_articles")).scalar_one(), 64)

@@ -440,7 +440,7 @@ class AISuggestionMigrationTests(PersistentCollectionCase):
             before = snapshot(connection)
             alembic_command.downgrade(config, "20261030_03")
             self.assertEqual(snapshot(connection), before)
-            alembic_command.upgrade(config, "head")
+            alembic_command.upgrade(config, "20261101_06")
             self.assertEqual(snapshot(connection), before)
             self.assertEqual(connection.scalar(text("SELECT count(*) FROM public.ai_processing_runs")), 0)
             alembic_command.check(config)
