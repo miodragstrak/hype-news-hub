@@ -607,13 +607,15 @@ deleted data. Test restores regularly instead of relying only on successful dump
 
 ## Remaining work before production activation
 
-1. Provision Darkić's dedicated Ubuntu host/database, protected owner/runtime
+1. Prepare isolated application containers and a dedicated database on the approved
+   Ubuntu host (which may also host AskHype), protected owner/runtime
    secrets, private networking, durable storage, scheduled encrypted off-host
    backups and a verified restore. No production infrastructure was provisioned.
-2. Upgrade through all three migrations (`01 → 02 → 03`), review existing ACLs,
+2. Upgrade through all six migrations (`01 → 02 → 03 → 04 → 05 → 06`), review existing ACLs,
    re-provision/recheck runtime allowlists, and explicitly enable
    PostgreSQL mode. Keep Render on default memory until an approved cutover;
    memory history is not automatically imported and is lost on restart.
+
 3. Configure HTTPS/reverse proxy and the browser-accessible API URL at frontend
    build time (existing Compose defaults target localhost). Keep database ports
    unpublished. Configure verified TLS if database traffic leaves the local host.
@@ -631,6 +633,10 @@ deleted data. Test restores regularly instead of relying only on successful dump
    snapshots/pagination, payload projections and archive-growth load tests.
    Sprint 15B.1 deliberately does not introduce that pagination/API refactor.
 
+For the separate, unactivated Sprint 14A stack, use the [self-hosted runbook](selfhosted-deployment.md).
+Its readiness-only `SELECT(version_num)` grant and application deny gate are
+specific to that entry point; the existing Render/development paths are unchanged.
+
 Automatic background retries/scheduling, manual identity conflict resolution,
 story merge/split tooling, article revision history and exact per-run article
 membership are future work. Collection history currently stores per-source
@@ -638,6 +644,6 @@ counts/errors and first-seen article provenance, not a full historical payload
 for every observation. Interrupted runs are repaired on the next collection,
 not by a background worker. Editorial demo overrides remain in memory; the
 authenticated PostgreSQL editorial workflow, approvals/version history and frontend
-are implemented separately. Production identity activation, real Serbian AI
-generation and WordPress Draft publishing remain separate work. Nothing in this
+are implemented separately. Production identity activation, controlled live Gemini
+enablement and WordPress Draft publishing remain separate activation/work items. Nothing in this
 sprint authorizes deployment.

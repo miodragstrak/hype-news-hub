@@ -1,0 +1,166 @@
+# Standalone configuration. Do not merge with docker-compose.yml (development ports).
+name: ${HNW_PROJECT_NAME:?Set a unique HNW_PROJECT_NAME}
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-api-image: &api-image
+  image: hype-world-news-api:${HNW_RELEASE:?Set HNW_RELEASE}
+  build:
+    context: ./backend
+    dockerfile: Dockerfile.selfhosted
+    args:
+      APP_UID: ${HNW_APP_UID:-10001}
+      APP_GID: ${HNW_APP_GID:-10001}
+
+x-owner-environment: &owner-environment
+  POSTGRES_HOST: news-db
+  POSTGRES_DB: ${HNW_DB_NAME:?Set HNW_DB_NAME}
+  POSTGRES_USER: ${HNW_DB_OWNER:?Set HNW_DB_OWNER}
+  POSTGRES_PASSWORD_FILE: /run/secrets/db_owner_password
+  POSTGRES_SSLMODE: disable
+
+services:
+  news-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${HNW_DB_NAME:?Set HNW_DB_NAME}
+      POSTGRES_USER: ${HNW_DB_OWNER:?Set HNW_DB_OWNER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_owner_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --auth-local=scram-sha-256
+      TZ: UTC
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=40", "-c", "password_encryption=scram-sha-256", "-c", "timezone=UTC", "-c", "log_timezone=UTC"]
+    volumes:
+      - news-data:/var/lib/postgresql/data
+    secrets: [db_owner_password]
+    networks: [database]
+    mem_limit: ${HNW_DB_MEMORY:-1g}
+    cpus: ${HNW_DB_CPUS:-1.0}
+    pids_limit: 256
+    shm_size: 128m
+    logging: *logging
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  news-api:
+    <<: *api-image
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      APP_ENV: production
+      NEWS_STORAGE_BACKEND: postgres
+      AI_PROCESSING_PROVIDER: disabled
+      BACKEND_CORS_ORIGINS: ${HNW_PUBLIC_ORIGIN:?Set the internal HTTPS origin}
+      BACKEND_CORS_ORIGIN_REGEX: ""
+      POSTGRES_HOST: news-db
+      POSTGRES_DB: ${HNW_DB_NAME:?Set HNW_DB_NAME}
+      POSTGRES_USER: ${HNW_DB_RUNTIME:?Set HNW_DB_RUNTIME}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_runtime_password
+      POSTGRES_SSLMODE: disable
+      POSTGRES_CONNECT_TIMEOUT_SECONDS: "5"
+      DATABASE_POOL_SIZE: "3"
+      DATABASE_MAX_OVERFLOW: "0"
+      DATABASE_POOL_TIMEOUT_SECONDS: "3"
+      FORWARDED_ALLOW_IPS: ${HNW_TRUSTED_PROXY_IPS:-127.0.0.1}
+    secrets: [db_runtime_password]
+    networks: [application, database]
+    depends_on:
+      news-db:
+        condition: service_healthy
+    mem_limit: ${HNW_API_MEMORY:-512m}
+    cpus: ${HNW_API_CPUS:-1.0}
+    pids_limit: 128
+    logging: *logging
+    stop_grace_period: 50s
+
+  news-web:
+    image: hype-world-news-web:${HNW_RELEASE:?Set HNW_RELEASE}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.selfhosted
+      args:
+        VITE_API_URL: ${HNW_PUBLIC_ORIGIN:?Set the internal HTTPS origin}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks: [application]
+    depends_on:
+      news-api:
+        condition: service_healthy
+    mem_limit: ${HNW_WEB_MEMORY:-128m}
+    cpus: ${HNW_WEB_CPUS:-0.5}
+    pids_limit: 64
+    logging: *logging
+
+  news-migrate:
+    <<: *api-image
+    profiles: [tools]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment: *owner-environment
+    secrets: [db_owner_password]
+    networks: [database]
+    command: ["python", "-B", "-m", "app.selfhosted_tools", "migrate", "upgrade", "head"]
+    depends_on:
+      news-db:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+    logging: *logging
+
+  news-provision:
+    <<: *api-image
+    profiles: [tools]
+    restart: "no"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *owner-environment
+      POSTGRES_RUNTIME_USER: ${HNW_DB_RUNTIME:?Set HNW_DB_RUNTIME}
+      POSTGRES_RUNTIME_PASSWORD_FILE: /run/secrets/db_runtime_password
+    secrets: [db_owner_password, db_runtime_password]
+    networks: [database]
+    command: ["python", "-B", "-m", "app.selfhosted_tools", "provision"]
+    depends_on:
+      news-db:
+        condition: service_healthy
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    logging: *logging
+
+networks:
+  application:
+    driver: bridge
+  database:
+    driver: bridge
+    internal: true
+
+volumes:
+  news-data:
+
+secrets:
+  db_owner_password:
+    file: ${HNW_DB_OWNER_PASSWORD_FILE:?Set an absolute owner secret file path}
+  db_runtime_password:
+    file: ${HNW_DB_RUNTIME_PASSWORD_FILE:?Set an absolute runtime secret file path}

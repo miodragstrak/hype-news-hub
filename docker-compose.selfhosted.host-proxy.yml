@@ -1,0 +1,8 @@
+# Optional ONLY for a host-based proxy, after checking the chosen ports are free.
+services:
+  news-web:
+    ports:
+      - "127.0.0.1:${HNW_WEB_BIND_PORT:?Choose an unused loopback web port}:8080"
+  news-api:
+    ports:
+      - "127.0.0.1:${HNW_API_BIND_PORT:?Choose an unused loopback API port}:8000"

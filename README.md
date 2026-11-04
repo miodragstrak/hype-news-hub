@@ -2,6 +2,15 @@
 
 Internal application for aggregating and processing entertainment news.
 
+## Self-hosted infrastructure preparation (Sprint 14A)
+
+The separate [self-hosted runbook](docs/selfhosted-deployment.md) covers isolated
+Compose services, non-root images, file secrets, all six migrations, restricted
+provisioning, readiness and backup/rollback. This stack is unactivated: application
+requests are denied until Sprint 14B production identity and ingress protection
+are implemented and reviewed. Existing development, Render and Vercel paths are
+unchanged. Do not combine the self-hosted and development Compose files.
+
 ## Sprint 17A.2: private versioned editorial workflow
 
 Sprint 17A.3A adds the [manual editorial frontend](docs/editorial-frontend.md) at
@@ -19,7 +28,10 @@ versions/source snapshots, review decisions, audit history, optimistic concurren
 and idempotent retries. Identity verification still defaults to unavailable; a
 verified server-side identity adapter and restricted PostgreSQL are required.
 Existing public collection and demo previews retain their memory/PostgreSQL behavior.
-No AI generation or WordPress integration is included.
+Sprint 17A itself adds no AI provider or WordPress publishing integration.
+Subsequent Sprint 17B adds persisted AI suggestions and an optional Gemini adapter,
+disabled by default; see [AI suggestions](docs/ai-suggestions.md) and
+[Gemini configuration](docs/gemini-provider.md). WordPress publishing is still disabled.
 
 See [editorial security, schema and migration operations](docs/editorial-foundation.md)
 for immutable provenance, restricted runtime grants and test-only identities.
