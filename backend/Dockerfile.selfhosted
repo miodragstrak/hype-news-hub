@@ -4,8 +4,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 ARG APP_UID=10001
 ARG APP_GID=10001
 RUN groupadd --gid "$APP_GID" newsroom && useradd --uid "$APP_UID" --gid newsroom --no-create-home newsroom
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt requirements.selfhosted.lock ./
+RUN python -m pip install --no-cache-dir --disable-pip-version-check pip==26.2 \
+    && python -m pip install --no-cache-dir --disable-pip-version-check -r requirements.selfhosted.lock \
+    && python -m pip check
 COPY app ./app
 COPY alembic.ini ./
 COPY alembic ./alembic

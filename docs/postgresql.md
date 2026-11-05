@@ -433,7 +433,7 @@ docker compose --profile tools run --rm migrate alembic check
 docker compose --profile tools run --rm migrate alembic history
 ```
 
-The seven revisions run in order: `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07`. Revision 07 adds self-hosted authentication and is forward-only.
+The eight revisions run in order: `20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07 → 20261104_08`. Revision 07 adds self-hosted authentication and is forward-only.
 The initial revision is `20261030_01`; Sprint 15B adds `20261030_02`, which
 backfills literal and normalized aliases and replaces unbounded text uniqueness
 with generated keys. Existing UUIDs and original source/article URLs are
@@ -611,7 +611,7 @@ deleted data. Test restores regularly instead of relying only on successful dump
    Ubuntu host (which may also host AskHype), protected owner/runtime
    secrets, private networking, durable storage, scheduled encrypted off-host
    backups and a verified restore. No production infrastructure was provisioned.
-2. Upgrade through all seven migrations (`01 → 02 → 03 → 04 → 05 → 06 → 07`), review existing ACLs,
+2. Upgrade through all eight migrations (`01 → 02 → 03 → 04 → 05 → 06 → 07 → 08`), review existing ACLs,
    re-provision/recheck runtime allowlists, and explicitly enable
    PostgreSQL mode. Keep Render on default memory until an approved cutover;
    memory history is not automatically imported and is lost on restart.
@@ -655,3 +655,8 @@ Revision `20261104_07` adds trusted-public-schema users, hashed sessions and bou
 login throttles. It is forward-only. Follow [application authentication](application-authentication.md)
 for the self-hosted runtime grants, secure bootstrap, cookies/CSRF and rollback
 requirements. Earlier migration revisions are unchanged.
+
+
+See [Sprint 14D security remediation](security-remediation-14d.md) for the outer ASGI
+Host boundary, isolated login budgets, migration 08 account events, locked runtime
+dependencies, remaining advisory applicability and owner-operated session retention.

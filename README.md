@@ -9,7 +9,7 @@ containers, non-root images, file secrets, migrations, provisioning and recovery
 [Sprint 14B authentication](docs/application-authentication.md) adds PostgreSQL
 cookie sessions, Argon2id passwords and admin-created accounts. Authentication is
 disabled by default, preserving the application-wide deny gate; enabling it needs
-reviewed HTTPS/Nginx settings, revision 07, provisioning and initial admin bootstrap.
+reviewed HTTPS/Nginx settings, revision 08, provisioning and initial admin bootstrap.
 The self-hosted build is isolated from existing Render/Vercel/client-preview modes.
 Do not combine self-hosted and development Compose files or deploy without review.
 
@@ -283,3 +283,6 @@ GET /api/test-wordpress-normalized?url=https://hypetv.rs&limit=5
 GET /api/test-wordpress-normalized?url=https://www.hypeproduction.rs&limit=5
 GET /api/test-wordpress-normalized?url=https://hypetv.mk&limit=5
 ```
+
+See [Sprint 14D security remediation](docs/security-remediation-14d.md) for the
+patched runtime, account-security events, retention and remaining advisory review.

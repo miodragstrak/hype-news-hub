@@ -27,7 +27,7 @@ class SelfhostedTests(unittest.TestCase):
         self.addCleanup(clean.stop)
 
     def test_gate_denies_all_application_paths_without_database_access(self):
-        with patch("app.api.readiness.check_database") as database, TestClient(create_selfhosted_app(selfhosted_settings())) as client:
+        with patch("app.api.readiness.check_database") as database, TestClient(create_selfhosted_app(selfhosted_settings()), base_url="https://news.example.invalid") as client:
             for path in ["/api/collect", "/api/stories", "/api/discovery", "/api/editorial/capabilities",
                          "/api/editorial/drafts", "/api/editorial/ai/suggestions", "/docs", "/openapi.json"]:
                 for method in ["GET", "POST", "OPTIONS"]:
@@ -41,7 +41,7 @@ class SelfhostedTests(unittest.TestCase):
 
     def test_readiness_does_not_disclose_exception_or_secret(self):
         sensitive = secrets.token_hex(32)
-        with patch("app.api.readiness.check_database", side_effect=RuntimeError(sensitive)), TestClient(create_selfhosted_app(selfhosted_settings())) as client:
+        with patch("app.api.readiness.check_database", side_effect=RuntimeError(sensitive)), TestClient(create_selfhosted_app(selfhosted_settings()), base_url="https://news.example.invalid") as client:
             result = client.get("/ready")
             self.assertEqual(result.status_code, 503)
             self.assertEqual(result.json(), {"status": "not_ready", "scope": "infrastructure"})

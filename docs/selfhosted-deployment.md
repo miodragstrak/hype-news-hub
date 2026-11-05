@@ -16,7 +16,7 @@ role, rate-limit and API contracts and the administrator bootstrap procedure.
 
 `HNW_AUTH_ENABLED=false` retains the original application-wide 503 gate. Enabling
 it installs the real PostgreSQL session verifier and requires one HTTPS origin,
-explicit trusted Nginx peer IPs, migration 07, correct runtime grants and an active
+explicit trusted Nginx peer IPs, migration 08, correct runtime grants and an active
 initial administrator. Readiness verifies database/schema/grants and reports
 `editorial_access=authenticated` when enabled, or `blocked` otherwise. It does not
 prove the external Nginx/TLS configuration is correct. Never activate by switching
@@ -116,10 +116,11 @@ Existing databases require a backup and review of the current revision before
 upgrade. Stop the procedure on any nonzero command exit. Migrations run once per release as explicit owner tools, never from API
 startup and never concurrently. The complete chain is:
 
-`20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07`.
+`20261030_01 → 20261030_02 → 20261030_03 → 20261101_04 → 20261101_05 → 20261101_06 → 20261104_07 → 20261104_08`.
 
-No previous revision is changed by 14B. Migration 07 is forward-only. Runtime provisioning applies existing
-least-privilege policies plus SELECT/INSERT/UPDATE on the three auth tables and additionally grants **SELECT(version_num) only** on
+No previous revision is changed by 14B. Migrations 07/08 are forward-only. Runtime provisioning applies existing
+least-privilege policies plus SELECT/INSERT/UPDATE on the three auth tables,
+SELECT/INSERT only on app_security_events, and additionally grants **SELECT(version_num) only** on
 `public.alembic_version` for readiness. It does not grant migration/DDL, DELETE,
 TRUNCATE, grant options or mutable history access. The existing provisioning and
 the marker grant each use transactions; rerunning completes a partially failed
@@ -131,7 +132,7 @@ migration and verify again. Bootstrap credentials never run FastAPI.
 ## Readiness, ingress and verification
 
 `/ready` checks connectivity, trusted runtime permissions, exact Alembic head,
-all 17 managed tables/columns and required table grants, without writes or external
+all 18 managed tables/columns and required table grants, without writes or external
 calls. The runtime may read only the migration marker, not change it. Missing
 schema/grants, wrong revision, owner credentials and unsafe permissions fail with
 generic 503; no exceptions, SQL, credentials or connection details are returned.
@@ -224,9 +225,8 @@ Record images/configuration, baseline AskHype health and a successful restore te
 Reboot/restart-test persistence and verify migrations/provisioning before access
 activation. Production activation requires independent authentication review and operator
 TLS/proxy checks; AUTH_ENABLED is not an authentication bypass.
-Review image and dependency advisories before activation. The existing frontend
-lockfile reported unresolved advisories during 14A validation (including build
-tooling and React Router); this infrastructure sprint does not update dependencies.
+Review image and dependency advisories before activation. Sprint 14D updates the affected build/runtime dependency locks; two conditional
+React Router advisories remain explicitly documented in its runbook.
 Use `npm --prefix frontend audit` for current results and triage runtime exposure
 separately from trusted build-time tooling. Never serve the Vite development server.
 
@@ -243,7 +243,7 @@ hnw_compose stop news-web news-api
 hnw_compose up -d --no-build --wait news-api news-web
 ```
 
-Do not automatically downgrade migrations: 07 is forward-only, 04 removes AI data, and 05/06 can refuse
+Do not automatically downgrade migrations: 07/08 are forward-only, 04 removes AI data, and 05/06 can refuse
 downgrades involving accepted/non-mock history. Do not run `down --volumes`, reuse
 AskHype's project, or perform global Docker cleanup. No automatic rollback is installed.
 
@@ -262,3 +262,8 @@ The integration tests remain opt-in on an initially empty disposable PostgreSQL 
 database named `hype_news_hub_test` (`RUN_POSTGRES_TESTS=1`); never point the test
 suite at this stack's persistent database or an existing service. Build and smoke
 test both new Dockerfiles with disposable credentials before a server rollout.
+
+
+See [Sprint 14D security remediation](security-remediation-14d.md) for the outer ASGI
+Host boundary, isolated login budgets, migration 08 account events, locked runtime
+dependencies, remaining advisory applicability and owner-operated session retention.

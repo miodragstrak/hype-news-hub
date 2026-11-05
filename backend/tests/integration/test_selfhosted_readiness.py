@@ -18,7 +18,7 @@ class SelfhostedReadinessTests(AuthDatabaseCase):
         provision_selfhosted_role(Settings(_env_file=None), self.role, self.runtime_config.postgres_password.get_secret_value())
 
     def readiness(self, **values):
-        with TestClient(create_selfhosted_app(self.config(**values))) as client:
+        with TestClient(create_selfhosted_app(self.config(**values)), base_url="https://news.example.invalid") as client:
             return client.get("/ready")
 
     def test_provisioning_is_repeatable_and_only_grants_marker_read_access(self):
@@ -30,7 +30,7 @@ class SelfhostedReadinessTests(AuthDatabaseCase):
         self.assertEqual(self.readiness().status_code, 200)
 
         with self.repository.engine.connect() as connection:
-            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "20261104_07")
+            self.assertEqual(connection.execute(text("SELECT version_num FROM public.alembic_version")).scalar_one(), "20261104_08")
             connection.rollback()
             for sql in ["UPDATE public.alembic_version SET version_num=version_num", "DELETE FROM public.alembic_version", "TRUNCATE public.alembic_version"]:
                 with self.assertRaises(ProgrammingError) as denied:
@@ -64,7 +64,7 @@ class SelfhostedReadinessTests(AuthDatabaseCase):
             self.assertEqual(self.readiness().status_code, 503)
         finally:
             with self.engine.begin() as c:
-                c.execute(text("UPDATE public.alembic_version SET version_num='20261104_07'"))
+                c.execute(text("UPDATE public.alembic_version SET version_num='20261104_08'"))
         with self.engine.begin() as c:
             c.execute(text(f'REVOKE INSERT ON public.ai_processing_runs FROM "{self.role}"'))
         self.assertEqual(self.readiness().status_code, 503)

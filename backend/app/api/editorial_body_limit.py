@@ -10,7 +10,7 @@ MAX_EDITORIAL_REQUEST_BYTES = 1024 * 1024
 
 
 async def editorial_validation_error(request, exc):
-    if request.url.path.startswith("/api/editorial/"):
+    if request.scope["path"].startswith("/api/editorial/"):
         # Default error serialization reflects input/exception objects, which may
         # contain bytes, non-finite floats or lone surrogates. Reflect none of them.
         return JSONResponse({"detail": "Invalid editorial request."}, status_code=422,

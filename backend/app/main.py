@@ -27,7 +27,10 @@ def create_app(app_settings: Settings | None = None, *, editorial_identity_verif
             if repository is not None and "engine" in repository.__dict__:
                 await run_in_threadpool(repository.engine.dispose)
 
-    application = FastAPI(title=config.app_name, lifespan=lifespan)
+    # Preserve the existing valid-JSON-without-Content-Type contract after the
+    # framework update. EditorialBodyLimit still validates UTF-8/media types,
+    # and self-hosted cookie commands still require Origin and CSRF checks.
+    application = FastAPI(title=config.app_name, lifespan=lifespan, strict_content_type=False)
     application.add_exception_handler(RequestValidationError, editorial_validation_error)
     application.state.editorial_identity_verifier = (
         editorial_identity_verifier if editorial_identity_verifier is not None else UnconfiguredEditorialIdentityVerifier()

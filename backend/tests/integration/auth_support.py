@@ -1,4 +1,4 @@
-"""Revision 07 fixtures: only explicitly empty disposable test databases are ever cleaned."""
+"""Revisions 07/08 fixtures: only explicitly empty disposable test databases are ever cleaned."""
 from alembic import command
 from sqlalchemy import text
 
@@ -13,7 +13,7 @@ class AuthDatabaseCase(PersistentCollectionCase):
         super().setUpClass()
         with cls.engine.begin() as connection:
             config = alembic_config(connection, include_auth=True)
-            command.upgrade(config, "20261104_07")
+            command.upgrade(config, "20261104_08")
         cls.addClassCleanup(cls.remove_auth_test_schema)
 
     @classmethod
@@ -23,6 +23,7 @@ class AuthDatabaseCase(PersistentCollectionCase):
         with cls.engine.begin() as connection:
             assert connection.scalar(text("SELECT current_database()")) == "hype_news_hub_test"
             AuthBase.metadata.drop_all(connection)
+            connection.execute(text("DROP FUNCTION IF EXISTS public.hwn_security_event_immutable()"))
             command.stamp(alembic_config(connection, include_auth=True), "20261101_06")
 
     def tearDown(self):

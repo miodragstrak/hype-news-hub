@@ -9,10 +9,11 @@ RUN npm run build:selfhosted
 
 FROM node:24-alpine
 WORKDIR /app
-RUN npm install -g serve@14.2.4
+COPY runtime/package.json runtime/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY --from=build --chown=node:node /app/dist-selfhosted ./dist
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:8080').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
-CMD ["serve", "-s", "dist", "-l", "tcp://0.0.0.0:8080", "--no-clipboard", "--no-port-switching"]
+CMD ["./node_modules/.bin/serve", "-s", "dist", "-l", "tcp://0.0.0.0:8080", "--no-compression", "--no-clipboard", "--no-port-switching"]

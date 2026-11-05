@@ -461,7 +461,7 @@ class EditorialCommandTests(PersistentCollectionCase):
             headers=self.headers()
             if content_type:headers["Content-Type"]=content_type
             response=self.private.post(BASE,content=content,headers=headers)
-            self.assertEqual(response.status_code,201,response.text)
+            self.assertEqual(response.status_code,201,(content_type,response.text))
             if original is None:original=response.json()
             self.assertEqual(response.json(),original)
         self.assertEqual((self.count(EditorialDraftVersion),self.count(EditorialEvent)),(1,1))

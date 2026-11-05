@@ -18,10 +18,11 @@ from app.core.editorial_security import EditorialPrincipal, EditorialRole, Inval
 from app.database.runtime_security import RUNTIME_PRIVILEGE_ALLOWLIST, assert_runtime_role
 from app.models.auth import User, LoginSession, LoginThrottle
 from app.repositories.news_repository import StorageUnavailable
+from app.services.security_events import record_user_event
 
 AUTH_PRIVILEGES = {name: ("SELECT", "INSERT", "UPDATE") for name in
                    ("app_users", "app_sessions", "app_login_throttles")}
-AUTH_POLICY = RUNTIME_PRIVILEGE_ALLOWLIST | AUTH_PRIVILEGES
+AUTH_POLICY = RUNTIME_PRIVILEGE_ALLOWLIST | AUTH_PRIVILEGES | {"app_security_events": ("SELECT", "INSERT")}
 USER_LOCK = 724913802113
 THROTTLE_LOCK = 724913802114
 COOKIE = "__Host-hwn_session"
@@ -110,11 +111,12 @@ class Authentication:
     def throttle(self, email, address):
         # Fixed bucket space prevents unbounded storage growth from invented emails/IPs.
         bucket = lambda value: int(hashlib.sha256(value.encode()).hexdigest(), 16) % 4096
-        entries = sorted([(0, 30), (1 + bucket(address), 10), (4097 + bucket(email), 5)])
+        entries = [(1 + bucket(address), 10), (4097 + bucket(email), 5), (0, 30)]
         limited = False
         with self.transaction() as session:
             session.execute(text("SELECT pg_catalog.pg_advisory_xact_lock(:key)"), {"key": THROTTLE_LOCK})
             now = session.scalar(select(func.pg_catalog.clock_timestamp()))
+            rows = []
             for key, limit in entries:
                 row = session.get(LoginThrottle, key)
                 if row is None:
@@ -122,8 +124,15 @@ class Authentication:
                     session.add(row)
                 if (now - row.started_at).total_seconds() >= 60:
                     row.started_at, row.attempts = now, 0
-                row.attempts = min(row.attempts + 1, 1_000_000)
-                limited |= row.attempts > limit
+                rows.append(row)
+                if row.attempts >= limit:
+                    limited = True
+                    break
+            # Admit and charge all budgets atomically, or charge none. Already
+            # blocked IPs/accounts cannot spend unrelated global login capacity.
+            if not limited:
+                for row in rows:
+                    row.attempts += 1
         if limited:
             raise AuthError(429, "Unable to sign in. Try again later.")
 
@@ -167,6 +176,7 @@ class Authentication:
         _, actor = self.resolve_in_session(session, context.token_hash)
         if actor.role != "admin":
             raise AuthError(403, "Permission denied.")
+        return actor
 
     def users(self, context, limit, offset):
         with self.transaction() as session:
@@ -178,33 +188,57 @@ class Authentication:
             normalized, encoded = email_address(email), password_hash(password)
         except (ValueError, UnicodeError):
             raise AuthError(422, "Invalid account data.") from None
+        error = None
         with self.transaction() as session:
-            self.admin(session, context)
-            if session.scalar(select(User.id).where(User.email == normalized)):
-                raise AuthError(409, "Unable to create account.")
-            user = User(email=normalized, password_hash=encoded, role=role, active=True, revision=1)
-            session.add(user)
-            session.flush()
-            return user_read(user)
+            actor = self.admin(session, context)
+            existing = session.scalar(select(User).where(User.email == normalized))
+            if existing:
+                record_user_event(session, actor, existing, "user.create_rejected", "conflict", (existing.role, existing.active))
+                error = AuthError(409, "Unable to create account.")
+            else:
+                user = User(email=normalized, password_hash=encoded, role=role, active=True, revision=1)
+                session.add(user)
+                session.flush()
+                record_user_event(session, actor, user, "user.created")
+                result = user_read(user)
+        if error:
+            raise error
+        return result
 
     def update_user(self, context, user_id, revision, role, active):
+        error = None
         with self.transaction() as session:
-            self.admin(session, context)
+            actor = self.admin(session, context)
             user = session.get(User, user_id, with_for_update=True)
             if user is None:
                 raise AuthError(404, "Account not found.")
+            previous = (user.role, user.active)
             if user.revision != revision:
-                raise AuthError(409, "Account changed. Reload before saving.")
-            if user.active and user.role == "admin" and (not active or role != "admin"):
+                error = AuthError(409, "Account changed. Reload before saving.")
+            elif user.active and user.role == "admin" and (not active or role != "admin"):
                 admins = session.scalar(select(func.count()).select_from(User).where(User.active.is_(True), User.role == "admin"))
                 if admins <= 1:
-                    raise AuthError(409, "A replacement active administrator is required.")
-            user.role, user.active, user.revision = role, active, user.revision + 1
-            if not active:
-                session.execute(update(LoginSession).where(LoginSession.user_id == user.id,
-                    LoginSession.revoked_at.is_(None)).values(revoked_at=func.pg_catalog.clock_timestamp()))
-            session.flush()
-            return user_read(user)
+                    error = AuthError(409, "A replacement active administrator is required.")
+            if error:
+                record_user_event(session, actor, user, "user.update_rejected", "conflict", previous)
+            else:
+                user.role, user.active, user.revision = role, active, user.revision + 1
+                if not active:
+                    session.execute(update(LoginSession).where(LoginSession.user_id == user.id,
+                        LoginSession.revoked_at.is_(None)).values(revoked_at=func.pg_catalog.clock_timestamp()))
+                actions = []
+                if previous[0] != role:
+                    actions.append("user.role_changed")
+                if previous[1] != active:
+                    actions.append("user.activated" if active else "user.deactivated")
+                for action in actions or ["user.updated"]:
+                    record_user_event(session, actor, user, action, previous=previous)
+                session.flush()
+                result = user_read(user)
+        # A rejected administrative action persists its event, but no account edit.
+        if error:
+            raise error
+        return result
 
 
 class SessionIdentityVerifier:

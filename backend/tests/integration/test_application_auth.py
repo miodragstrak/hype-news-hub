@@ -220,7 +220,7 @@ class ApplicationAuthenticationTests(AuthDatabaseCase):
         finally:editor.close()
 
     def test_concurrent_bootstrap_creates_exactly_one_initial_admin(self):
-        with self.engine.begin() as c:c.execute(User.__table__.delete())
+        with self.engine.begin() as c:c.execute(text("TRUNCATE public.app_security_events, public.app_users CASCADE"))
         def create(email):
             try:bootstrap_admin(self.owner,email,self.password);return 'created'
             except ValueError:return 'refused'
@@ -246,7 +246,7 @@ class ApplicationAuthPopulatedMigrationTests(PersistentCollectionCase):
 
         with self.engine.begin() as connection:
             before = snapshot(connection)
-            command.upgrade(alembic_config(connection, include_auth=True), "20261104_07")
+            command.upgrade(alembic_config(connection, include_auth=True), "20261104_08")
         try:
             with self.engine.begin() as connection:
                 self.assertEqual(snapshot(connection), before)
@@ -263,4 +263,5 @@ class ApplicationAuthPopulatedMigrationTests(PersistentCollectionCase):
             with self.engine.begin() as connection:
                 self.assertEqual(connection.scalar(text("SELECT current_database()")), "hype_news_hub_test")
                 AuthBase.metadata.drop_all(connection)
+                connection.execute(text("DROP FUNCTION IF EXISTS public.hwn_security_event_immutable()"))
                 command.stamp(alembic_config(connection, include_auth=True), "20261101_06")

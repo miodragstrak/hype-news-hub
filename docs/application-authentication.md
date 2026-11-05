@@ -12,7 +12,7 @@ separate. Never use the demo entry point as the operational server.
 to `true` only after the following owner-controlled steps and independent review:
 
 1. Back up the existing database and prove recovery into a separate database.
-2. Build the new API/web image pair and migrate through **20261104_07**.
+2. Build the new API/web image pair and migrate through **20261104_08**.
 3. Run the existing self-hosted runtime provisioning command again.
 4. Bootstrap the initial administrator interactively, once, as described below.
 5. Configure the exact HTTPS origin and the actual Nginx-to-container peer IP/CIDR.
@@ -124,7 +124,7 @@ CSRF control. Login itself requires exact Origin to prevent login CSRF.
 
 Rate limits are PostgreSQL-backed and shared across processes: 5 attempts per
 account bucket, 10 per IP bucket and 30 globally per 60 seconds, including successful
-attempts. Stored buckets are SHA-256-sharded into a fixed space of at most 8193
+admitted attempts. Already blocked IP/account attempts do not consume global capacity. Stored buckets are SHA-256-sharded into a fixed space of at most 8193
 rows, retaining no raw attempted email/IP. Collisions deliberately fail stricter;
 busy shared offices may need a separately reviewed limit change. Unknown, inactive
 and wrong-password attempts return the same generic 401; dummy Argon2 verification
@@ -143,7 +143,7 @@ the unrevoked cookie: complete logout before leaving an unattended device.
 
 Revision `20261104_07` follows `20261101_06`; previous migration files are unchanged.
 It adds `public.app_users`, `public.app_sessions` and a third bounded throttle
-table. A third table is necessary for reliable cross-process rate limits without
+table. A third authentication table is necessary for reliable cross-process rate limits without
 adding Redis or another service. Authentication has separate trusted-schema ORM
 metadata; editorial collection history is not rewritten or given user-delete FKs.
 Runtime gets SELECT/INSERT/UPDATE only on these three tables, in addition to the
@@ -151,11 +151,10 @@ existing immutable-history allowlists and readiness marker read. It cannot DELET
 TRUNCATE, perform DDL or delegate privileges. Existing legacy provisioning defaults
 remain unchanged; use the self-hosted provisioner for the combined auth policy.
 
-Readiness verifies all 17 tables, exact head, effective runtime privileges and an
+Readiness verifies all 18 tables, exact head, effective runtime privileges and an
 active initial admin when auth is enabled. It reveals no DB/credential details.
-There is no background cleanup or scheduler. Sessions remain hashed/revoked for
-operator-reviewed retention; expired-session cleanup is a future owner-maintenance
-procedure. User rows are deactivated, not deleted, preserving audit identities.
+There is no background cleanup or scheduler. Sessions remain hashed/revoked until
+the explicit owner-operated retention procedure in the Sprint 14D runbook is run. User rows are deactivated, not deleted, preserving audit identities.
 
 Migration 07 is **forward-only** and refuses all downgrades. Back up before upgrade;
 roll back via compatible images or a separately restored pre-upgrade database.
@@ -167,3 +166,8 @@ a supported production rollback.
 Before deployment: independent security review; current dependency advisory triage;
 operator secrets, TLS/origin/proxy-IP checks; tested backups/restores and monitoring.
 No production accounts, passwords, Nginx changes or deployment are provided here.
+
+
+See [Sprint 14D security remediation](security-remediation-14d.md) for the outer ASGI
+Host boundary, isolated login budgets, migration 08 account events, locked runtime
+dependencies, remaining advisory applicability and owner-operated session retention.

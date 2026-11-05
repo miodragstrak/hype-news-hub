@@ -41,3 +41,27 @@ class LoginThrottle(AuthBase):
     bucket: Mapped[int] = mapped_column(Integer, primary_key=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer)
+
+
+class SecurityEvent(UUIDPrimaryKey, AuthBase):
+    """Append-only account events. No arbitrary request data or credential fields."""
+    __tablename__ = "app_security_events"
+    __table_args__ = (
+        CheckConstraint("action IN ('user.created', 'user.activated', 'user.deactivated', 'user.role_changed', 'user.updated', 'user.update_rejected', 'user.create_rejected')", name="action"),
+        CheckConstraint("outcome IN ('success', 'conflict', 'denied')", name="outcome"),
+        CheckConstraint("previous_role IS NULL OR previous_role IN ('admin', 'editor')", name="previous_role"),
+        CheckConstraint("new_role IN ('admin', 'editor')", name="new_role"),
+        CheckConstraint("target_revision > 0", name="target_revision"),
+    )
+    actor_user_id: Mapped[UUID | None] = mapped_column(ForeignKey("public.app_users.id", ondelete="RESTRICT"))
+    actor_issuer: Mapped[str] = mapped_column(String(128))
+    actor_subject: Mapped[str] = mapped_column(String(128))
+    target_user_id: Mapped[UUID] = mapped_column(ForeignKey("public.app_users.id", ondelete="RESTRICT"), index=True)
+    action: Mapped[str] = mapped_column(String(32))
+    outcome: Mapped[str] = mapped_column(String(16))
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp(), index=True)
+    previous_role: Mapped[str | None] = mapped_column(String(16))
+    new_role: Mapped[str] = mapped_column(String(16))
+    previous_active: Mapped[bool | None] = mapped_column(Boolean)
+    new_active: Mapped[bool] = mapped_column(Boolean)
+    target_revision: Mapped[int] = mapped_column(Integer)

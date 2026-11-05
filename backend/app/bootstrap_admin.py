@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.database.session import create_database_engine
 from app.models.auth import User
 from app.services.authentication import USER_LOCK, email_address, password_hash
+from app.services.security_events import record_user_event
 
 
 def bootstrap_admin(config, email, password):
@@ -19,7 +20,10 @@ def bootstrap_admin(config, email, password):
             with Session(bind=connection) as session:
                 if session.scalar(select(func.count()).select_from(User)):
                     raise ValueError("Bootstrap refused: accounts already exist. Use authenticated administration.")
-                session.add(User(email=normalized, password_hash=encoded, role="admin", active=True, revision=1))
+                user = User(email=normalized, password_hash=encoded, role="admin", active=True, revision=1)
+                session.add(user)
+                session.flush()
+                record_user_event(session, None, user, "user.created")
                 session.flush()
     finally:
         engine.dispose()

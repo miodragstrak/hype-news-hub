@@ -24,6 +24,7 @@ def create_selfhosted_app(config=None):
             or not config.postgres_password.get_secret_value() or config.ai_processing_provider != "disabled"
             or config.backend_cors_origin_regex is not None or not valid_origin):
         raise ValueError("Self-hosted infrastructure requires production PostgreSQL, one HTTPS origin and disabled AI.")
+    from app.api.trusted_request import TrustedRequestBoundary
     from app.main import create_app
     from app.api.readiness import router
     application = create_app(config)
@@ -45,14 +46,16 @@ def create_selfhosted_app(config=None):
         async def safe_validation(request, exc):
             return JSONResponse({"detail": "Invalid request."}, status_code=422, headers={"Cache-Control": "no-store"})
 
+        application.add_middleware(TrustedRequestBoundary, origin=config.backend_cors_origins)
         return application
 
     @application.middleware("http")
     async def activation_gate(request, call_next):
         # Authentication disabled: never expose the operational application.
-        if request.url.path not in {"/", "/ready"}:
+        if request.scope["path"] not in {"/", "/ready"}:
             return JSONResponse({"detail": "Self-hosted editorial access is not activated."}, status_code=503,
                                 headers={"Cache-Control": "no-store"})
         return await call_next(request)
 
+    application.add_middleware(TrustedRequestBoundary, origin=config.backend_cors_origins)
     return application

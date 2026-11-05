@@ -90,7 +90,7 @@ def install_authentication(application, service, verifier, config):
 
     @application.middleware("http")
     async def session_guard(request, call_next):
-        path, method = request.url.path, request.method
+        path, method = request.scope["path"], request.method
         if (path, method) in {("/", "GET"), ("/ready", "GET")}:
             return await call_next(request)
         try:
