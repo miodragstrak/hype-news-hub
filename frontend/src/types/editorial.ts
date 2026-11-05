@@ -1,7 +1,7 @@
 /** Private FastAPI editorial schemas; public aggregation types remain separate. */
 export type EditorialPermission = "editorial:read" | "editorial:edit" | "editorial:submit" | "editorial:review" | "editorial:deliver" | "editorial:administer";
 export type EditorialRole = "reader" | "editor" | "reviewer" | "publisher" | "administrator";
-export type EditorialCapabilities = { roles: EditorialRole[]; permissions: EditorialPermission[]; storage: "postgres"; commands_enabled: boolean };
+export type EditorialCapabilities = { roles: EditorialRole[]; permissions: EditorialPermission[]; storage: "postgres"; commands_enabled: boolean; ai_generation_enabled?: boolean };
 export type Attribution = { article_id: string; source_id: string };
 export type EditorialImage = { url: string; alt: string; credit: string; source_article_id: string };
 export type PublishingPayload = {

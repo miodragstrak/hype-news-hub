@@ -256,3 +256,22 @@ describe("explicit AI suggestion acceptance", () => {
     for (const changed of [{ ...value, origin: "manual" }, { ...value, content_hash: "e".repeat(64) }, { ...value, payload: { ...value.payload, body: "OTHER BODY" } }, { ...value, payload: { ...value.payload, body: " " + value.payload.body } }]) expect(() => checkedAcceptedVersion(changed, plan, suggestion.input.source)).toThrow();
   });
 });
+
+
+describe("Serbian v2 editorial output", () => {
+  it("prepopulates lead as body opening and SEO without changing frozen evidence or auto-accepting", async () => {
+    suggestion.output!.body = "Uvodni pasus.\n\nNastavak teksta.";
+    suggestion.output!.seo = { title: "Predloženi SEO naslov", description: "Predloženi SEO opis." };
+    const sealed = JSON.stringify(suggestion);
+    mount(); await loaded();
+    expect(body().value).toBe("Uvodni pasus.\n\nNastavak teksta.");
+    expect((screen.getByLabelText(/^SEO title/) as HTMLInputElement).value).toBe("Predloženi SEO naslov");
+    expect((screen.getByLabelText(/^SEO description/) as HTMLTextAreaElement).value).toBe("Predloženi SEO opis.");
+    expect(posts()).toHaveLength(0); expect(JSON.stringify(suggestion)).toBe(sealed);
+    accept(); await accepted();
+    expect(posts()[0].body.payload.seo).toEqual(suggestion.output!.seo);
+    expect(posts()[0].body.payload.body).toBe("Uvodni pasus.\n\nNastavak teksta.");
+    expect(versions.at(-1)!.origin).toBe("ai"); expect(head!.effective_approval).toBe(false);
+    expect(posts().every(call => call.path.endsWith("/accept"))).toBe(true);
+  });
+});

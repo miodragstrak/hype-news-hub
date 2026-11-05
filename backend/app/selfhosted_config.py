@@ -35,3 +35,23 @@ def assert_migration_marker_permissions(connection, role: str | None = None) -> 
                                            "'public.alembic_version', :privilege)"),
                                       {"role": role, "privilege": checked}).scalar_one():
                     raise ValueError("Migration marker permissions require administrator review; shared grants were not changed.")
+
+
+def load_gemini_secret():
+    """Optional file-only secret, loaded only by the explicitly opted-in composition."""
+    if os.environ.get("AI_PROCESSING_PROVIDER", "disabled") != "gemini":
+        return
+    if os.environ.get("GEMINI_API_KEY"):
+        raise ValueError("Self-hosted Gemini requires file-only credentials.")
+    filename = os.environ.get("GEMINI_API_KEY_FILE")
+    try:
+        if not filename:
+            raise ValueError()
+        with Path(filename).open("rb") as handle:
+            raw = handle.read(4097)
+        value = raw.decode("utf-8").rstrip("\n")
+        if len(raw) > 4096 or not value or any(ord(c) < 33 or ord(c) > 126 for c in value):
+            raise ValueError()
+    except (OSError, ValueError, UnicodeError):
+        raise ValueError("Self-hosted Gemini secret is missing, unreadable or invalid.") from None
+    os.environ["GEMINI_API_KEY"] = value

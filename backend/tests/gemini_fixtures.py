@@ -29,6 +29,7 @@ def request():
 
 def suggestion(req):
     return {"evidence_sufficient":True, "headline":"Ana Marković nastupa 12. novembra", "excerpt":"Cena ulaznice je 25 evra.",
+        "lead":"Ana Marković najavljuje nastup.", "seo":{"title":"Nastup Ane Marković","description":"Najavljen nastup 12. novembra."},
         "body":'Ana Marković nastupa 12. novembra 2026. Cena je 25 evra. Izjavila je: „Koncert počinje u 20 časova.“',
         "source_references":[{"article_id":str(req.source.article_id),"source_id":str(req.source.source_id),
             "input_text_hash":req.source.input_text_hash,"excerpt":req.source.input_text[:200]}],"warnings":[]}

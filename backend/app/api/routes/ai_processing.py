@@ -1,4 +1,4 @@
-"""Private mock suggestions and explicit acceptance; no approval or publishing."""
+"""Private AI suggestions and explicit acceptance; no approval or publishing."""
 from typing import Annotated
 from uuid import UUID
 
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/editorial/ai/suggestions", tags=["ai-suggestions
     413: {"description": "Command exceeds the 1 MiB request limit."},
     415: {"description": "Commands require UTF-8 JSON."},
     422: {"model": EditorialAPIError, "description": "Invalid source/parameters or size budget exceeded."},
+    429: {"description": "Daily backend generation budget exhausted; no provider dispatch."},
     503: {"description": "Identity, restricted PostgreSQL, migration or provider unavailable."},
 })
 Reader = Annotated[EditorialAccess, Depends(require_editorial_permission(EditorialPermission.READ))]
@@ -39,7 +40,7 @@ def api_error(exc):
     202: {"model": SuggestionRead, "description": "The original command is still processing."},
 })
 async def create_suggestion(command: CreateSuggestion, access: Editor, request: Request, response: Response):
-    """Generate a clearly labelled mock result. Failed processing is explicit in status/error_code.
+    """Generate a source-grounded suggestion using the explicitly configured provider. Failed processing is explicit in status/error_code.
 
     Retry the identical command_id and payload to recover its durable record. A new
     command_id is an explicit new attempt, with newly captured evidence. No automatic retry.

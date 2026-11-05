@@ -1,12 +1,12 @@
 """Application-owned contracts. Evidence retains its original language and text."""
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 import unicodedata
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer, model_validator
 
-from app.schemas.editorial_commands import CommandResult, PublishingPayload, Text
+from app.schemas.editorial_commands import CommandResult, PublishingPayload, SEOMetadata, Text
 
 MAX_INPUT_TEXT_BYTES = 64 * 1024
 MAX_INPUT_BYTES = 256 * 1024
@@ -72,7 +72,12 @@ class FrozenSource(FrozenModel):
 class GenerationSettings(FrozenModel):
     max_input_tokens: int = Field(ge=1, le=32768, strict=True)
     max_output_tokens: int = Field(ge=1, le=8192, strict=True)
-    output_schema_version: Literal[1] = 1
+    output_schema_version: Literal[1, 2] = 1
+
+
+class GenerationBudget(FrozenModel):
+    utc_day: date
+    daily_limit: int = Field(ge=1, le=100, strict=True)
 
 
 class GenerationRequest(FrozenModel):
@@ -80,8 +85,9 @@ class GenerationRequest(FrozenModel):
     story_id: UUID
     mode: Literal["translation"] = "translation"
     target_locale: Literal["sr-Latn"] = "sr-Latn"
-    prompt_version: Literal["mock-translation-v1", "sr-latn-translation-v1"] = "mock-translation-v1"
+    prompt_version: Literal["mock-translation-v1", "sr-latn-translation-v1", "sr-latn-ekavian-v2"] = "mock-translation-v1"
     source: FrozenSource
+    budget: GenerationBudget | None = None
     instructions: str | None = Field(default=None, max_length=16000)
     generation_settings: GenerationSettings | None = None
     response_schema: str | None = Field(default=None, max_length=16000)
@@ -89,7 +95,7 @@ class GenerationRequest(FrozenModel):
     @model_serializer(mode="wrap")
     def preserve_legacy_mock_shape(self, handler):
         data = handler(self)
-        for name in ("instructions", "generation_settings", "response_schema"):
+        for name in ("instructions", "generation_settings", "response_schema", "budget"):
             if data.get(name) is None:
                 data.pop(name, None)
         return data
@@ -126,7 +132,7 @@ class ProcessingMetadata(FrozenModel):
     generation_attempts: int = Field(default=0, ge=0, le=2, strict=True)
     generation_outcome: Literal["not_started", "rejected", "completed", "unknown"] = "not_started"
     evidence_sufficient: bool | None = None
-    output_schema_version: Literal[1] = 1
+    output_schema_version: Literal[1, 2] = 1
     estimated_cost: None = None
     pricing_provenance: None = None
     cost_status: Literal["unknown"] = "unknown"
@@ -147,13 +153,22 @@ class GenerationResult(FrozenModel):
     body: Text = Field(max_length=20_000)
     source_references: tuple[SourceReference, ...] = Field(min_length=1, max_length=1)
     warnings: tuple[Text, ...] = Field(min_length=1, max_length=10)
+    seo: SEOMetadata | None = None
+
+    @model_serializer(mode="wrap")
+    def preserve_sealed_v1_output(self, handler):
+        data = handler(self)
+        if self.seo is None:
+            data.pop("seo", None)
+        return data
+
     # Provider return-channel metadata is sealed separately, including on failed
     # outputs. It never changes the legacy suggestion-content JSON/hash shape.
     metadata: ProcessingMetadata | None = Field(default=None, exclude=True, repr=False)
 
     @model_validator(mode="after")
     def latin_generated_text(self):
-        for text in (self.headline, self.excerpt, self.body, *self.warnings):
+        for text in (self.headline, self.excerpt, self.body, *self.warnings, *((self.seo.title, self.seo.description) if self.seo else ())):
             if any(unicodedata.category(char).startswith("L") and "LATIN" not in unicodedata.name(char, "") for char in text):
                 raise ValueError("Generated editorial prose must use Latin script.")
         return self

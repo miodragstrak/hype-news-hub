@@ -160,3 +160,5 @@ version pinning, frozen evidence, same-command acceptance/generation recovery an
 logout during generation. Optional
 `AI_BROWSER_ARTIFACTS=/tmp/hnh-ai-browser` saves screenshots and measurements
 outside the repository.
+
+For the story-review entry, Ekavian lead/SEO output and durable daily limit, see [HNW-P0-01](ai-editorial-generation.md). Provider availability is now reported by private capabilities; absence/false disables new generation while history remains readable.

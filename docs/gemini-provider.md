@@ -17,7 +17,7 @@ separate, authenticated PostgreSQL commands; generation never creates/approves a
 | `AI_PROCESSING_TIMEOUT_SECONDS` | `5` | Overall seconds, maximum 30. Includes preflight, counting, reads and retry delays. Use 30 for a separately approved live check. |
 | `GEMINI_MAX_INPUT_TOKENS` | `4096` | Tokenizer preflight limit; configurable 1–32768. Oversized input fails without generation. |
 | `GEMINI_MAX_OUTPUT_TOKENS` | `2048` | Sent as `maxOutputTokens`; configurable 1–8192, subject to model limits. |
-| `GEMINI_SAFE_RETRIES` | `1` | Maximum safe retry per HTTP operation, 0 or 1. Set 0 for the first live check. |
+| `GEMINI_SAFE_RETRIES` | `0` | No automatic retries by default. Self-hosted opt-in requires 0. |
 
 Missing key/model or malformed model configuration does not prevent application
 startup or public memory-mode operation. A new private processing command fails
@@ -48,7 +48,7 @@ Responses are limited to 256 KiB decoded JSON, with identity encoding required;
 application input/output/detail budgets from [AI suggestions](ai-suggestions.md)
 remain in force. No streaming or automatic continuation is used.
 
-Structured output fields are `evidence_sufficient`, `headline`, `excerpt`, `body`,
+Structured output fields are `evidence_sufficient`, `headline`, `excerpt`, `lead`, `body`, `seo`,
 one `source_references` entry and at most seven warnings. References contain the
 exact article/source UUIDs, input-text hash and an original-language evidence
 excerpt, not model-invented citation URLs. All wire fields are independently
@@ -187,3 +187,5 @@ print(result.metadata.model_dump_json() if result.metadata else 'Usage unknown')
 Official references (checked 2026-11-01): [structured output](https://ai.google.dev/gemini-api/docs/generate-content/structured-output),
 [REST generation/usage metadata](https://ai.google.dev/api/generate-content),
 [model discovery](https://ai.google.dev/api/models), [token counting](https://ai.google.dev/api/tokens).
+
+New generations use the [Ekavian lead/SEO v2 contract and durable daily budget](ai-editorial-generation.md). Historical v1 suggestions remain unchanged.

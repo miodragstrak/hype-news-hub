@@ -301,3 +301,102 @@ class GeminiProcessingTests(AIProcessingCase):
             self.assertEqual(old,new)
             command.check(config)
         self.assertEqual(self.read(result["id"]),result)
+
+    def test_daily_budget_is_durable_failed_attempts_count_and_replay_is_free(self):
+        self.private_app.state.news_repository.config = self.gemini_config.model_copy(update={"ai_daily_generation_limit":1})
+        body = self.creation()
+        result = self.create(body)
+        self.assertEqual(result["input"]["budget"]["daily_limit"], 1)
+        before = len(self.http.calls)
+        self.create(expected=429)
+        self.assertEqual(len(self.http.calls), before)
+        self.assertEqual(self.create(body, expected=200), result)
+        # Another application instance has neither the original provider nor local counters.
+        restarted = create_app(self.runtime_config, editorial_identity_verifier=TestIdentityVerifier(), ai_provider=self.gemini)
+        restarted.state.news_repository.config = self.gemini_config.model_copy(update={"ai_daily_generation_limit":10})
+        try:
+            with TestClient(restarted) as client:
+                self.create(client=client, expected=429)  # Frozen lower ceiling cannot increase during this UTC day.
+                self.assertEqual(self.create(body, client, expected=200), result)
+        finally: restarted.state.news_repository.engine.dispose()
+        self.assertEqual(self.count(AIProcessingRun),1)
+        self.assertEqual(self.count(EditorialDraftVersion),0)
+
+    def test_budget_counts_failed_dispatch_and_zero_denies_without_writes(self):
+        self.private_app.state.news_repository.config = self.gemini_config.model_copy(update={"ai_daily_generation_limit":0})
+        self.create(expected=429)
+        self.assertEqual(self.count(AIProcessingRun),0)
+        self.assertFalse(self.http.calls)
+        self.private_app.state.news_repository.config = self.gemini_config.model_copy(update={"ai_daily_generation_limit":1})
+        self.http.generate = lambda call: httpx.Response(503, json={})
+        self.assertEqual(self.create()["status"],"failed")
+        self.create(expected=429)
+        self.assertEqual(len(self.http.calls),3)
+
+    def test_budget_is_serialized_across_independent_processes(self):
+        import subprocess, sys
+        # Each child initializes its own engine/provider. Only the existing
+        # global PostgreSQL reservation lock coordinates their budgets.
+        worker = """
+import json,sys
+from app.core.config import Settings
+from app.main import create_app
+from app.services.gemini_provider import GeminiProvider
+from app.services.ai_processing import AIProcessing
+from app.schemas.ai_processing import CreateSuggestion
+from app.core.editorial_security import EditorialPrincipal,EditorialRole
+from app.services.editorial_commands import EditorialCommandError
+from editorial_identity import TestIdentityVerifier
+values, body = json.load(sys.stdin)
+settings = Settings(_env_file=None, **values)
+app = create_app(settings, editorial_identity_verifier=TestIdentityVerifier())
+processor = AIProcessing(app.state.news_repository, EditorialPrincipal('urn:hnh:test','test-editor',frozenset({EditorialRole.EDITOR})), GeminiProvider(settings))
+try:
+    result, request = processor.reserve(CreateSuggestion(**body))
+    print('reserved')
+except EditorialCommandError as error:
+    print(error.status)
+finally:
+    app.state.news_repository.engine.dispose()
+"""
+        values = self.gemini_config.model_dump(mode="json")
+        values["postgres_password"] = self.gemini_config.postgres_password.get_secret_value()
+        values["gemini_api_key"] = TEST_KEY
+        values["ai_daily_generation_limit"] = 1
+        children = [subprocess.Popen([sys.executable,"-B","-c",worker], stdin=subprocess.PIPE,
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) for _ in range(2)]
+        for child in children:
+            child.stdin.write(json.dumps([values,self.creation()])); child.stdin.close(); child.stdin=None
+        outcomes=[]
+        for child in children:
+            out, err = child.communicate(timeout=20)
+            self.assertEqual(child.returncode,0,err[-1000:]); outcomes.append(out.strip())
+        self.assertCountEqual(outcomes,["reserved","429"])
+        self.assertEqual(self.count(AIProcessingRun),1)
+        self.assertFalse(self.http.calls)  # Reservation/recovery tests never contact a provider.
+
+    def test_budget_database_failure_rolls_back_and_never_dispatches(self):
+        original = AIProcessing.reserve_daily_budget
+        def fail_after_check(processor, session):
+            original(processor, session)
+            raise SQLAlchemyError("fixture database failure")
+        with patch.object(AIProcessing, "reserve_daily_budget", fail_after_check):
+            self.create(expected=503)
+        self.assertEqual(self.count(AIProcessingRun), 0)
+        self.assertFalse(self.http.calls)
+        self.assertEqual(self.create()["status"], "succeeded")  # Transaction lock was released.
+
+    def test_budget_fails_closed_for_repeatable_snapshot_configuration(self):
+        runtime_engine = self.private_app.state.news_repository.engine
+        with self.engine.begin() as connection:
+            role = connection.dialect.identifier_preparer.quote(self.runtime_config.postgres_user)
+            connection.execute(text(f"ALTER ROLE {role} SET default_transaction_isolation = 'repeatable read'"))
+        runtime_engine.dispose()
+        try:
+            self.create(expected=503)
+            self.assertFalse(self.http.calls)
+            self.assertEqual(self.count(AIProcessingRun),0)
+        finally:
+            with self.engine.begin() as connection:
+                connection.execute(text(f"ALTER ROLE {role} RESET default_transaction_isolation"))
+            runtime_engine.dispose()

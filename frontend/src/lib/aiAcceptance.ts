@@ -18,6 +18,7 @@ export function formFromSuggestion(suggestion: AiSuggestion, head: EditorialDraf
   if (!suggestion.output) throw invalid();
   const form = payload ? formFromPayload(payload) : emptyForm();
   return { ...form, headline: suggestion.output.headline, excerpt: suggestion.output.excerpt, body: suggestion.output.body,
+    ...(suggestion.output.seo ? { seoTitle: suggestion.output.seo.title, seoDescription: suggestion.output.seo.description } : {}),
     sources: frozenAttribution(suggestion.input.source) };
 }
 

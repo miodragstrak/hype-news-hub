@@ -23,7 +23,7 @@ stored[0].output!.body += "\n" + "Dugačak predlog za proveru prikaza. ".repeat(
 const json = (value: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(value), { status }));
 window.fetch = async (input, init = {}) => {
   const url = new URL(String(input), location.href), path = url.pathname;
-  if (path.endsWith("/capabilities")) return json({ roles: ["editor"], permissions: ["editorial:read", "editorial:edit"], storage: "postgres", commands_enabled: true });
+  if (path.endsWith("/capabilities")) return json({ roles: ["editor"], permissions: ["editorial:read", "editorial:edit"], storage: "postgres", commands_enabled: true, ai_generation_enabled: true });
   if (path.endsWith("/accept") && init.method === "POST") {
     const command: AcceptAiSuggestion = JSON.parse(String(init.body)); acceptancePosts.push(command);
     const previous = receipts.get(command.command_id); if (previous) return json(previous);

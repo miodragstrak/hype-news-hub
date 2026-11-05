@@ -42,7 +42,8 @@ function AiWorkspace({ storyId, client, capabilities, onDenied }: PrivatePageAcc
   const [intent, setIntent] = useState<Intent | null>(null);
   const [retryOpen, setRetryOpen] = useState(false);
   const canEdit = capabilities.commands_enabled && capabilities.permissions.includes("editorial:edit");
-  const canGenerate = canEdit && loaded && contextReady;
+  const canRecover = canEdit && loaded && contextReady;
+  const canGenerate = canRecover && capabilities.ai_generation_enabled === true;
   const blocker = useBlocker(Boolean(intent));
   useBeforeUnload(useCallback((event: BeforeUnloadEvent) => { if (intent) { event.preventDefault(); event.returnValue = ""; } }, [intent]));
   function report(reason: unknown) {
@@ -113,7 +114,7 @@ function AiWorkspace({ storyId, client, capabilities, onDenied }: PrivatePageAcc
     finally { task.finish(ticket); }
   }
   async function generate(plan?: Intent) {
-    if (!canGenerate || contextBusy.current || task.isRunning() || (!plan && intent)) return;
+    if (!(plan ? canRecover : canGenerate) || contextBusy.current || task.isRunning() || (!plan && intent)) return;
     const source = sources.find(row => row.article_id === sourceId);
     if (!plan && !source) return;
     const ticket = task.begin(); if (!ticket) return;
@@ -132,7 +133,7 @@ function AiWorkspace({ storyId, client, capabilities, onDenied }: PrivatePageAcc
       if (task.owns(ticket)) { setRows(next); setPage(previous => ({ ...previous, offset: 0 })); }
     } catch (reason) {
       if (!task.owns(ticket)) return;
-      if (!acknowledged && reason instanceof EditorialApiError && [400, 413, 415, 422].includes(reason.status)) setIntent(null);
+      if (!acknowledged && reason instanceof EditorialApiError && [400, 413, 415, 422, 429].includes(reason.status)) setIntent(null);
       report(reason);
     } finally { task.finish(ticket); }
   }
@@ -159,13 +160,14 @@ function AiWorkspace({ storyId, client, capabilities, onDenied }: PrivatePageAcc
           try { const next = checkedAiSources(await client.sources(storyId, sources.length, ticket.signal)); if (task.owns(ticket)) { setSources(previous => [...previous, ...next.filter(row => !previous.some(old => old.article_id === row.article_id))]); setSourceMore(next.length === 50); } }
           catch (reason) { if (task.owns(ticket)) report(reason); } finally { task.finish(ticket); }
         }}>Učitaj još izvora</Button> : null}
+        {capabilities.ai_generation_enabled !== true ? <p>AI generisanje nije uključeno. Sačuvani predlozi ostaju dostupni; nema zamenskog demo izlaza.</p> : null}
         {!canEdit ? <p>Pregled je dostupan. Generisanje zahteva Editor dozvolu i uključen urednički servis.</p> : null}
         <Button type="button" className="h-auto min-h-10 max-w-full whitespace-normal" disabled={!canGenerate || task.busy || Boolean(intent) || !source} onClick={() => void generate()}>Generiši AI predlog</Button>
       </CardContent></Card>
       {intent ? <section aria-label="Oporavak AI komande" className="space-y-3 rounded-xl border border-amber-300 p-4">
         <h3 className="font-bold">{intent.id ? "Postojeća obrada još nije završena" : "Ishod komande nije potvrđen"}</h3>
         <p className="text-sm">Komanda: <span className="break-all">{intent.command.command_id}</span>. Nova komanda je blokirana. Nema automatskog ponavljanja. Proverite istoriju ili eksplicitno pošaljite istu komandu radi oporavka.</p>
-        <Button type="button" variant="secondary" className="h-auto min-h-10 whitespace-normal" disabled={task.busy || !canGenerate} onClick={() => setRetryOpen(true)}>Oporavi istu komandu</Button>
+        <Button type="button" variant="secondary" className="h-auto min-h-10 whitespace-normal" disabled={task.busy || !canRecover} onClick={() => setRetryOpen(true)}>Oporavi istu komandu</Button>
       </section> : null}
       <AiSuggestionComparison suggestion={detail} source={source} article={article} />
       {canEdit && contextReady && detail?.status === "succeeded" && !task.busy && !intent ? <Link className="inline-block rounded-xl border border-[#f5c518] px-4 py-3 font-semibold text-[#f5c518] underline" to={`/review/${storyId}/ai/${detail.id}/edit`}>Uredi i pripremi prihvatanje</Link> : null}

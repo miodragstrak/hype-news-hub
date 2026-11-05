@@ -111,7 +111,7 @@ class EditorialSecurityTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.json(), {
             "roles": ["reviewer"], "permissions": ["editorial:read", "editorial:review"],
-            "storage": "postgres", "commands_enabled": True,
+            "storage": "postgres", "commands_enabled": True, "ai_generation_enabled": False,
         })
 
     def test_production_router_protects_editorial_commands_and_has_no_test_endpoints(self):

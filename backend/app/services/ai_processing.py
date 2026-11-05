@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.content_safety import safe_content_url
 from app.models import AIProcessingEvent, AIProcessingRun, CollectedArticle, NewsSource, Story, StoryArticle
 from app.schemas.ai_processing import (
-    FrozenSource, GenerationRequest, GenerationResult, MAX_DETAIL_BYTES, MAX_INPUT_BYTES,
+    FrozenSource, GenerationBudget, GenerationRequest, GenerationResult, MAX_DETAIL_BYTES, MAX_INPUT_BYTES,
     MAX_INPUT_TEXT_BYTES, MAX_OUTPUT_BYTES, MOCK_WARNING, ProcessingMetadata, SuggestionEvent, SuggestionRead, SuggestionSummary,
 )
 from app.services.ai_provider import ProviderCancelled, ProviderConfigurationError, ProviderError
@@ -78,6 +78,30 @@ class AIProcessing:
             raise EditorialCommandError(422, "AI suggestion detail exceeds the response budget.")
         return result
 
+    def reserve_daily_budget(self, session):
+        # Existing immutable reservations are the durable ledger. Count every
+        # Gemini reservation, including failed/interrupted/uncertain outcomes.
+        # The same global transaction lock is shared by all application processes.
+        # Each query after waiting for the lock must see prior committed
+        # reservations. A repeatable snapshot could otherwise undercount them.
+        if session.scalar(text("SHOW transaction_isolation")) != "read committed":
+            raise EditorialCommandError(503, "AI budget requires read-committed database transactions.")
+        session.execute(text("SELECT pg_catalog.pg_advisory_xact_lock(724913802115)"))
+        now = session.scalar(select(func.pg_catalog.clock_timestamp()))
+        start = now.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        limit = self.repository.config.ai_daily_generation_limit
+        if limit <= 0:
+            raise EditorialCommandError(429, "Daily AI generation budget is unavailable.")
+        caps = session.scalars(select(AIProcessingRun.input_payload["budget"]["daily_limit"].as_integer())
+            .where(AIProcessingRun.created_at >= start, AIProcessingRun.created_at < start + timedelta(days=1),
+                   AIProcessingRun.provenance["provider"].astext == "gemini").limit(limit)).all()
+        # An older/smaller configured ceiling is sticky for the rest of the UTC
+        # day. Rolling instances cannot silently increase already reserved budget.
+        effective = min([limit, *[cap for cap in caps if cap is not None]])
+        if len(caps) >= effective:
+            raise EditorialCommandError(429, "Daily AI generation budget has been reached.")
+        return now, GenerationBudget(utc_day=start.date(), daily_limit=effective)
+
     def reserve(self, command):
         digest = self.request_hash("ai.generate", None, command)
         with self.transaction() as session:
@@ -118,6 +142,9 @@ class AIProcessing:
                 excerpt=article.excerpt, content=article.content, input_text=input_text,
                 input_text_hash=hashlib.sha256(input_text.encode()).hexdigest(), captured_at=now))
             request = self.provider.prepare(request)
+            if self.provider.provenance.provider == "gemini":
+                now, budget = self.reserve_daily_budget(session)
+                request = request.model_copy(update={"budget": budget})
             payload = request.model_dump(mode="json")
             if len(encoded(payload)) > MAX_INPUT_BYTES:
                 raise EditorialCommandError(422, "Selected evidence exceeds the frozen-input budget.")
@@ -143,6 +170,8 @@ class AIProcessing:
         output = GenerationResult.model_validate(value)
         if output.provenance != self.provider.provenance or (output.provenance.is_mock and MOCK_WARNING not in output.warnings):
             raise ValueError("Provider provenance or explicit mock warning is missing")
+        if request.generation_settings and request.generation_settings.output_schema_version == 2 and output.seo is None:
+            raise ValueError("Editorial output requires SEO metadata")
         reference = output.source_references[0]
         if (reference.article_id, reference.source_id, reference.input_text_hash) != (
             request.source.article_id, request.source.source_id, request.source.input_text_hash
@@ -154,7 +183,10 @@ class AIProcessing:
             return set(re.findall(r"https?://[^\s<>\"']+", text or "", flags=re.IGNORECASE))
         allowed_urls = set().union(*(urls(text) for text in (request.source.input_text, request.source.source_url,
             request.source.original_url, request.source.canonical_url)))
-        generated_urls = set().union(*(urls(text) for text in (output.headline, output.excerpt, output.body, *output.warnings)))
+        generated_text = (output.headline, output.excerpt, output.body, *output.warnings)
+        if output.seo:
+            generated_text += (output.seo.title, output.seo.description)
+        generated_urls = set().union(*(urls(value) for value in generated_text))
         if not generated_urls <= allowed_urls:
             raise ValueError("Generated URLs must be present in frozen evidence")
         return output.model_dump(mode="json")

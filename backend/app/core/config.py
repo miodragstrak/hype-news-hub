@@ -34,12 +34,13 @@ class Settings(BaseSettings):
     auth_session_seconds: int = Field(default=28800, ge=300, le=86400)
     auth_trusted_proxy_ips: str = ""
     ai_processing_timeout_seconds: float = Field(default=5, gt=0, le=30, allow_inf_nan=False)
+    ai_daily_generation_limit: int = Field(default=10, ge=0, le=100)
     gemini_api_key: SecretStr = SecretStr("")
     # No model default: choose an available text model explicitly, after review.
     gemini_model: str = ""
     gemini_max_input_tokens: int = Field(default=4096, ge=1, le=32768)
     gemini_max_output_tokens: int = Field(default=2048, ge=1, le=8192)
-    gemini_safe_retries: int = Field(default=1, ge=0, le=1)
+    gemini_safe_retries: int = Field(default=0, ge=0, le=1)
 
     postgres_host: str = "localhost"
     postgres_port: int = Field(default=5432, ge=1, le=65535)

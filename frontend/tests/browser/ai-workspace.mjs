@@ -90,6 +90,7 @@ try {
     if (width === 320) {
       await until(() => js(`Boolean(document.querySelector('[aria-label="Oporavak prihvatanja"]'))`), "uncertain acceptance");
       assert.equal(await js("aiFixture.acceptancePosts.length"), 1);
+      await until(() => js(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Ponovi isto prihvatanje'&&!b.disabled))`), "recovery operation released");
       await click("Ponovi isto prihvatanje");
       assert.equal(await js("JSON.stringify(aiFixture.acceptancePosts[0])===JSON.stringify(aiFixture.acceptancePosts[1])"), true);
     }

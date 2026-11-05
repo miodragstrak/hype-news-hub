@@ -12,7 +12,7 @@ import { deferred } from "./fixtures";
 
 vi.mock("../src/services/newsService", async original => ({ ...await original<typeof import("../src/services/newsService")>(), isDemoDataModeEnabled: vi.fn(), getDiscoverySources: vi.fn(), getStories: vi.fn(), getEditorialQueue: vi.fn() }));
 type Call = { path: string; query: URLSearchParams; body: CreateAiSuggestion; init: RequestInit };
-let calls: Call[], suggestions: AiSuggestion[], permissions: string[], capabilityStatus: number, commands: boolean;
+let calls: Call[], suggestions: AiSuggestion[], permissions: string[], capabilityStatus: number, commands: boolean, generationEnabled: boolean;
 let getOverride: ((call: Call) => Promise<Response> | null) | null;
 let postOverride: ((call: Call, commit: () => Response) => Promise<Response>) | null;
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status });
@@ -25,12 +25,12 @@ const loaded = () => screen.findByLabelText("Izvor za novu obradu");
 const generate = () => screen.getByRole("button", { name: "Generiši AI predlog" });
 const inspectFirst = () => fireEvent.click(screen.getAllByRole("button", { name: /^Prikaži predlog/ })[0]);
 beforeEach(() => {
-  calls = []; suggestions = []; permissions = ["editorial:read", "editorial:edit"]; capabilityStatus = 200; commands = true; getOverride = null; postOverride = null;
+  calls = []; suggestions = []; permissions = ["editorial:read", "editorial:edit"]; capabilityStatus = 200; commands = true; generationEnabled = true; getOverride = null; postOverride = null;
   vi.mocked(news.isDemoDataModeEnabled).mockReturnValue(false); vi.mocked(news.getDiscoverySources).mockResolvedValue([]); vi.mocked(news.getStories).mockResolvedValue({ stories: [], stories_total: 0 }); vi.mocked(news.getEditorialQueue).mockResolvedValue({ stories: [], stories_total: 0 });
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const call: Call = { path: url.pathname, query: url.searchParams, init, body: init.body ? JSON.parse(String(init.body)) : {} }; calls.push(call);
-    if (call.path.endsWith("/capabilities")) return json({ roles: ["reader"], permissions, storage: "postgres", commands_enabled: commands }, capabilityStatus);
+    if (call.path.endsWith("/capabilities")) return json({ roles: ["reader"], permissions, storage: "postgres", commands_enabled: commands, ai_generation_enabled: generationEnabled }, capabilityStatus);
     if (init.method === "POST") {
       expect(call.path).toBe("/api/editorial/ai/suggestions");
       const commit = () => {
@@ -260,4 +260,29 @@ describe("isolated frozen source provenance", () => {
     expect(screen.getByText("Izvorni ID: CURRENT-999")).toBeTruthy(); expect(screen.getByText("Članak UUID: " + sourceRows[0].article_id)).toBeTruthy();
     expect(screen.getByRole("region", { name: "Originalni tekst izvora" }).textContent).toContain("CURRENT ORIGINAL 1");
   });
+});
+
+
+describe("AI generation availability and daily budget", () => {
+  it("keeps historical suggestions readable while generation is disabled", async () => {
+    generationEnabled = false; suggestions = [aiSuggestion()]; mount(); await loaded();
+    expect(generate().hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(/AI generisanje nije uključeno/)).toBeTruthy();
+    inspectFirst(); await screen.findByText("AI PRIVATE BODY 1"); expect(posts()).toHaveLength(0);
+  });
+  it("does not recover or retry a definitively rejected daily budget reservation", async () => {
+    postOverride = async () => json({},429); mount(); await loaded(); fireEvent.click(generate());
+    await screen.findByText(/Dnevni budžet AI obrade je dostignut/);
+    expect(posts()).toHaveLength(1); expect(screen.queryByRole("button", {name:"Oporavi istu komandu"})).toBeNull();
+    expect(generate().hasAttribute("disabled")).toBe(false);
+  });
+});
+
+
+it("links from the individual story review to the existing private AI workspace without mutation", async () => {
+  const {router} = mount(); await loaded();
+  await act(async () => { await router.navigate(`/review/${storyId}`); });
+  const action = await screen.findByRole("link", {name:"Generiši srpski nacrt"});
+  expect(action.getAttribute("href")).toBe(`/review/${storyId}/ai`);
+  fireEvent.click(action); await loaded(); expect(posts()).toHaveLength(0);
 });

@@ -3,12 +3,13 @@ from urllib.parse import urlsplit
 
 from fastapi.responses import JSONResponse
 
-from app.selfhosted_config import load_database_secrets
+from app.selfhosted_config import load_database_secrets, load_gemini_secret
 
 
 def create_selfhosted_app(config=None):
     if config is None:
         load_database_secrets()
+        load_gemini_secret()
         # Import after loading file secrets; normal Render composition never calls this loader.
         from app.core.config import Settings
         config = Settings(_env_file=None)
@@ -21,9 +22,10 @@ def create_selfhosted_app(config=None):
     except ValueError:
         valid_origin = False
     if (config.app_env != "production" or config.news_storage_backend != "postgres"
-            or not config.postgres_password.get_secret_value() or config.ai_processing_provider != "disabled"
+            or not config.postgres_password.get_secret_value()
             or config.backend_cors_origin_regex is not None or not valid_origin):
-        raise ValueError("Self-hosted infrastructure requires production PostgreSQL, one HTTPS origin and disabled AI.")
+        raise ValueError("Self-hosted infrastructure requires production PostgreSQL, one HTTPS origin.")
+    validate_selfhosted_ai(config)
     from app.api.trusted_request import TrustedRequestBoundary
     from app.main import create_app
     from app.api.readiness import router
@@ -59,3 +61,20 @@ def create_selfhosted_app(config=None):
 
     application.add_middleware(TrustedRequestBoundary, origin=config.backend_cors_origins)
     return application
+
+
+def validate_selfhosted_ai(config):
+    """Local-only opt-in validation. Never contact a provider during startup."""
+    if config.ai_processing_provider == "disabled":
+        return
+    if (config.ai_processing_provider != "gemini" or not config.auth_enabled
+            or not 1 <= config.ai_daily_generation_limit <= 100
+            or config.gemini_safe_retries != 0
+            or config.gemini_max_input_tokens > 4096 or config.gemini_max_output_tokens > 2048):
+        raise ValueError("Self-hosted AI requires authenticated Gemini, a daily budget and conservative token limits without retries.")
+    from app.services.gemini_provider import GeminiProvider
+    from app.services.ai_provider import ProviderConfigurationError
+    try:
+        GeminiProvider(config).check_configuration()
+    except ProviderConfigurationError:
+        raise ValueError("Self-hosted Gemini model or credentials are unavailable.") from None

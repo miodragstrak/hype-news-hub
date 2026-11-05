@@ -21,7 +21,7 @@ initial administrator. Readiness verifies database/schema/grants and reports
 `editorial_access=authenticated` when enabled, or `blocked` otherwise. It does not
 prove the external Nginx/TLS configuration is correct. Never activate by switching
 to the unguarded demo entry point. There are no hardcoded accounts or auth bypasses.
-AI remains disabled; WordPress publishing and scheduling are not added.
+AI remains disabled in the base composition; the reviewed optional [AI overlay](ai-editorial-generation.md) requires explicit authenticated opt-in. WordPress publishing and scheduling are not added.
 
 ## Layout and isolation
 

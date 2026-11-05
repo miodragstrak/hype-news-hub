@@ -85,3 +85,34 @@ class SelfhostedTests(unittest.TestCase):
                 with self.assertRaises(ValueError) as result:
                     load_database_secrets()
                 self.assertNotIn(str(path), str(result.exception))
+
+    def test_gemini_opt_in_requires_authentication_and_conservative_local_configuration(self):
+        from app.selfhosted import validate_selfhosted_ai
+        valid = selfhosted_settings(auth_enabled=True, ai_processing_provider="gemini",
+            gemini_model="gemini-fixture-model", gemini_api_key="fixture-key-only", ai_daily_generation_limit=3,
+            ai_processing_timeout_seconds=30)
+        validate_selfhosted_ai(valid)  # No network or database needed for configuration validation.
+        for changes in ({"auth_enabled":False}, {"ai_daily_generation_limit":0}, {"gemini_safe_retries":1},
+                        {"gemini_max_input_tokens":4097}, {"gemini_max_output_tokens":2049},
+                        {"gemini_model":""}, {"ai_processing_provider":"mock"}):
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                validate_selfhosted_ai(valid.model_copy(update=changes))
+        self.assertEqual(Settings(_env_file=None).ai_processing_provider, "disabled")
+
+    def test_optional_gemini_secret_is_file_only_and_not_loaded_when_disabled(self):
+        from app.selfhosted_config import load_gemini_secret
+        load_gemini_secret()
+        self.assertNotIn("GEMINI_API_KEY", os.environ)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "test-key"; path.write_text("fixture-key-only\n")
+            os.environ.update(AI_PROCESSING_PROVIDER="gemini", GEMINI_API_KEY_FILE=str(path))
+            load_gemini_secret()
+            self.assertEqual(os.environ["GEMINI_API_KEY"], "fixture-key-only")
+            with self.assertRaises(ValueError): load_gemini_secret()
+
+    def test_valid_opt_in_still_denies_anonymous_generation_without_contacting_provider(self):
+        settings = selfhosted_settings(auth_enabled=True, auth_trusted_proxy_ips="127.0.0.1", ai_processing_provider="gemini",
+            gemini_model="gemini-fixture-model", gemini_api_key="fixture-key-only", ai_processing_timeout_seconds=30)
+        with patch("httpx.AsyncClient.send", side_effect=AssertionError("No provider HTTP permitted")), \
+                TestClient(create_selfhosted_app(settings), base_url="https://news.example.invalid") as client:
+            self.assertEqual(client.post("/api/editorial/ai/suggestions",json={}).status_code,401)

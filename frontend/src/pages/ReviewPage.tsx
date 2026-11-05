@@ -90,6 +90,11 @@ export function ReviewPage(): JSX.Element {
       </div>
 
       <EditorialAccessBanner storyId={storyId} />
+      <Card><CardContent className="space-y-3 p-6" lang="sr-Latn">
+        <h3 className="text-xl font-bold">Srpski urednički nacrt</h3>
+        <p>Generišite predlog na srpskoj ekavici i latinici, proverite izvor, pa uredite tekst i izričito potvrdite čuvanje. Ništa se ne odobrava niti objavljuje automatski.</p>
+        <Link className="inline-block rounded-xl border border-[#f5c518] px-4 py-3 font-semibold text-[#f5c518]" to={`/review/${encodeURIComponent(storyId)}/ai`}>Generiši srpski nacrt</Link>
+      </CardContent></Card>
 
       {isLoading ? (
         <Card>

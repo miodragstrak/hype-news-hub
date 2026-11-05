@@ -30,6 +30,7 @@ export function checkedAiSuggestion(value: AiSuggestion, storyId: string, expect
   const output = value.output;
   if (["succeeded", "accepted", "rejected"].includes(value.status)) {
     if (!output || ![output.headline, output.excerpt, output.body].every(v => typeof v === "string" && v.length > 0) || !Array.isArray(output.warnings) || !output.warnings.length || output.warnings.length > 10 || output.warnings.some(v => typeof v !== "string") || !Array.isArray(output.source_references) || output.source_references.length !== 1 || !value.output_hash) throw invalid();
+    if (output.seo !== undefined && (!output.seo || typeof output.seo.title !== "string" || !output.seo.title || output.seo.title.length > 120 || typeof output.seo.description !== "string" || !output.seo.description || output.seo.description.length > 320)) throw invalid();
     provenance(output.provenance);
     if (["provider", "model", "is_mock", "adapter_version"].some(key => output.provenance[key as keyof AiProvenance] !== value.provenance[key as keyof AiProvenance])) throw invalid();
     const reference = output.source_references[0];
@@ -58,5 +59,5 @@ export function matchingCollectedSource(source: StorySource | undefined, article
 }
 export function aiErrorText(error: unknown) {
   const status = error instanceof EditorialApiError ? error.status : 0;
-  return ({ 0: "Veza je prekinuta. Ishod generisanja nije potvrđen.", 401: "Prijava je istekla. Privatni sadržaj je uklonjen.", 403: "Nemate dozvolu za ovu AI operaciju. Privatni sadržaj je uklonjen.", 404: "Priča ili AI predlog nisu dostupni.", 409: "Komanda je u sukobu. Proverite postojeći predlog pre novog pokušaja.", 413: "Zahtev je prevelik.", 422: "Izvor ili odgovor nije podržan. Sadržaj nije skraćen.", 503: "AI servis nije dostupan ili nije podešen. Ishod generisanja nije potvrđen." } as Record<number, string>)[status] ?? "Server nije potvrdio AI zahtev. Nema automatskog ponavljanja.";
+  return ({ 0: "Veza je prekinuta. Ishod generisanja nije potvrđen.", 401: "Prijava je istekla. Privatni sadržaj je uklonjen.", 403: "Nemate dozvolu za ovu AI operaciju. Privatni sadržaj je uklonjen.", 404: "Priča ili AI predlog nisu dostupni.", 409: "Komanda je u sukobu. Proverite postojeći predlog pre novog pokušaja.", 413: "Zahtev je prevelik.", 429: "Dnevni budžet AI obrade je dostignut. Novi zahtev nije poslat AI servisu.", 422: "Izvor ili odgovor nije podržan. Sadržaj nije skraćen.", 503: "AI servis nije dostupan ili nije podešen. Ishod generisanja nije potvrđen." } as Record<number, string>)[status] ?? "Server nije potvrdio AI zahtev. Nema automatskog ponavljanja.";
 }
