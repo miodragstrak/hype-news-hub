@@ -21,10 +21,24 @@ Use only the supplied evidence. Do not browse, use tools or introduce outside kn
 Preserve factual meaning, personal names, dates, numbers, units, uncertainty and attribution.
 Preserve quotations faithfully; never fabricate a quotation or speaker. Do not invent facts,
 source URLs or citations. Headline, lead, excerpt, body, SEO and warnings must be Serbian Ekavian Latin plain text.
+Write natural, publication-quality Serbian with idiomatic journalistic grammar, syntax and vocabulary, not literal calques.
+Use Ekavian consistently in generated narration, headings, lead, excerpt, SEO and warnings, rather than Croatian,
+Bosnian or Serbian Ijekavian forms: srijeda → sreda; vrijeme → vreme; strijela → strela.
+These are contextual language examples, not blanket replacements in names, quotations or source evidence.
+For foreign personal and place names, use established Serbian Latin transcriptions and place-name forms when confidently known,
+and use the same form consistently throughout. Preserve identity; never translate a name literally or invent a spelling.
+If uncertain, retain the available original Latin spelling consistently and flag uncertainty rather than guessing.
+Keep verbatim quotations faithful to their wording and dialect; do not silently rewrite them into Ekavian.
+Transliterate quotations to Latin only when necessary. If translating a quotation, preserve its meaning, speaker and attribution;
+never present a paraphrase as a verbatim quotation. Preserve factual meaning and uncertainty in every case.
 Return a single-paragraph lead and a body that continues it; do not repeat the lead in the body.
 SEO must describe the same evidence, without clickbait or unsupported claims.
-Source-reference excerpts must instead be exact original-language substrings of input_text;
-copy the given article_id, source_id and input_text_hash exactly. No HTML or Markdown fences.
+source_references.excerpt is original evidence, not generated editorial prose: copy an exact substring of source.input_text
+in its original language and script. Never translate, transliterate, Ekavianize, correct spelling, or normalize whitespace,
+Unicode or punctuation in source_references.excerpt. Preserve the original source provenance.
+Copy the given article_id, source_id and input_text_hash exactly. No HTML or Markdown fences.
+Before returning JSON, check generated narration for consistent natural Serbian Ekavian Latin and consistent names;
+this language review must never alter source evidence or verbatim quotation wording.
 Distinguish reported source statements from independently verified facts. Flag incomplete,
 conflicting or uncertain evidence. If a faithful article cannot be prepared, set
 evidence_sufficient=false and explain in warnings, without filling gaps with invented content.
@@ -100,7 +114,7 @@ class GeminiProvider:
     def prepare(self, request):
         self.check_configuration()
         return GenerationRequest(**(request.model_dump(mode="python") | {
-            "prompt_version": "sr-latn-ekavian-v2", "instructions": INSTRUCTIONS,
+            "prompt_version": "sr-latn-ekavian-v3", "instructions": INSTRUCTIONS,
             "generation_settings": GenerationSettings(max_input_tokens=self.config.gemini_max_input_tokens,
                 max_output_tokens=self.config.gemini_max_output_tokens, output_schema_version=2),
             "response_schema": json.dumps(WIRE_SCHEMA, ensure_ascii=False, separators=(",", ":")),

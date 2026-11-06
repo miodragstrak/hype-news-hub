@@ -85,7 +85,7 @@ class GenerationRequest(FrozenModel):
     story_id: UUID
     mode: Literal["translation"] = "translation"
     target_locale: Literal["sr-Latn"] = "sr-Latn"
-    prompt_version: Literal["mock-translation-v1", "sr-latn-translation-v1", "sr-latn-ekavian-v2"] = "mock-translation-v1"
+    prompt_version: Literal["mock-translation-v1", "sr-latn-translation-v1", "sr-latn-ekavian-v2", "sr-latn-ekavian-v3"] = "mock-translation-v1"
     source: FrozenSource
     budget: GenerationBudget | None = None
     instructions: str | None = Field(default=None, max_length=16000)

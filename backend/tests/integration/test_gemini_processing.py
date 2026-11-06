@@ -56,6 +56,7 @@ class GeminiProcessingTests(AIProcessingCase):
         body=self.creation()
         result=self.create(body)
         self.assertEqual((result["status"],result["provenance"]["provider"],result["provenance"]["is_mock"]),("succeeded","gemini",False))
+        self.assertEqual(result["input"]["prompt_version"], "sr-latn-ekavian-v3")
         self.assertEqual(result["processing_metadata"]["usage"]["total_tokens"],200)
         self.assertEqual(result["processing_metadata"]["reported_model_version"],"gemini-fixture-version-001")
         self.assertIsNone(result["processing_metadata"]["estimated_cost"])
