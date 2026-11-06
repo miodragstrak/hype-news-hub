@@ -106,6 +106,9 @@ export class EditorialApi {
   generateAiSuggestion(command: CreateAiSuggestion, signal?: AbortSignal) {
     return this.request<AiSuggestion>("/api/editorial/ai/suggestions", signal, command);
   }
+  recoverAiSuggestion(suggestionId: string, command: CreateAiSuggestion, signal?: AbortSignal) {
+    return this.request<AiSuggestion>(`/api/editorial/ai/suggestions/${encodeURIComponent(suggestionId)}/recover`, signal, command);
+  }
   acceptAiSuggestion(suggestionId: string, command: AcceptAiSuggestion, signal?: AbortSignal) {
     return this.request<EditorialReceipt>(`/api/editorial/ai/suggestions/${encodeURIComponent(suggestionId)}/accept`, signal, command);
   }

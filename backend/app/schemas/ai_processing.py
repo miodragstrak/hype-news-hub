@@ -214,6 +214,7 @@ class SuggestionEvent(FrozenModel):
 
 
 class SuggestionRead(SuggestionSummary):
+    recovery_command: CreateSuggestion | None = None
     input: GenerationRequest
     output: GenerationResult | None
     actor_issuer: str

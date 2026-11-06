@@ -401,3 +401,18 @@ finally:
             with self.engine.begin() as connection:
                 connection.execute(text(f"ALTER ROLE {role} RESET default_transaction_isolation"))
             runtime_engine.dispose()
+
+    def test_strict_recovery_is_free_with_exhausted_budget_and_disabled_generation(self):
+        repo=self.private_app.state.news_repository
+        repo.config=self.gemini_config.model_copy(update={"ai_daily_generation_limit":1})
+        principal=EditorialPrincipal("urn:hnh:test","test-editor",frozenset({EditorialRole.EDITOR}))
+        body=self.creation()
+        reserved,_=AIProcessing(repo,principal,self.gemini).reserve(CreateSuggestion(**body))
+        self.create(expected=429)
+        path=BASE+"/"+str(reserved.id)+"/recover"
+        self.assertEqual(self.private.post(path,json=body,headers=self.headers()).status_code,202)
+        self.private_app.state.ai_provider=None
+        repo.config=self.gemini_config.model_copy(update={"ai_daily_generation_limit":0})
+        self.assertEqual(self.private.post(path,json=body,headers=self.headers()).status_code,202)
+        self.assertEqual(self.count(AIProcessingRun),1)
+        self.assertFalse(self.http.calls)

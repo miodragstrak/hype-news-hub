@@ -116,8 +116,64 @@ try {
   await js("aiFixture.logout();aiFixture.release()");
   await until(() => js(`document.body.textContent.includes('Sign in through your newsroom identity provider')`), "logout");
   assert.equal(await js("Boolean(document.querySelector('article')||document.querySelector('[data-testid=ai-comparison]'))"), false);
+  // CDP injects a server-fixture seed on reload; the application stores nothing.
+  await cdp("Page.navigate", { url: `http://127.0.0.1:${address.port}/tests/browser/ai-workspace.html` });
+  await until(() => js("Boolean(window.aiFixture&&document.querySelector('select'))"), "fresh fixture");
+  const recoverySeed = await js(`(() => { const value=aiFixture.getSuggestions()[0];value.status='processing';value.revision=1;value.output=null;value.output_hash=null;value.recovery_required=true;value.processing_metadata=null;
+    value.recovery_command=Object.fromEntries(['command_id','story_id','article_id','source_id','target_locale','mode'].map(field=>[field,value[field]]));return value; })()`);
+  const injection = await cdp("Page.addScriptToEvaluateOnNewDocument", {source:`window.hnwRecoverySeed=${JSON.stringify(recoverySeed)};`});
+  await cdp("Page.reload");
+  await until(() => js(`(() => { if(!window.hnwRecoverySeed) return false; const button=[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prikaži predlog')&&!b.disabled); if(!button) return false;button.click();return true; })()`), "persisted history after real reload");
+  await until(() => js(`Boolean([...document.querySelectorAll('button')].find(b=>b.textContent==='Oporavi postojeću obradu'&&!b.disabled))`), "persisted recovery action");
+  assert.equal(await js("aiFixture.posts.length+aiFixture.recoveryPosts.length"),0,"History reads do not submit commands");
+  const secondRecovery = await js(`(() => { const b=structuredClone(aiFixture.getSuggestions()[0]);b.id='00000000-0000-4000-8000-000000009901';b.command_id='00000000-0000-4000-8000-000000009902';b.input.request_id=b.id;b.recovery_required=false;b.recovery_command.command_id=b.command_id;aiFixture.getSuggestions().push(b);return b; })()`);
+  await click("Osveži istoriju AI predloga");
+  await until(() => js(`!document.querySelector('[aria-label="Oporavak AI komande"]')&&[...document.querySelectorAll('button')].filter(b=>b.textContent.startsWith('Prikaži predlog')).length===2`), "history clears selected recovery");
+  async function selectRecovery(value) {
+    await until(() => js(`(() => { const b=[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prikaži predlog')&&b.textContent.includes(${JSON.stringify(value.id.slice(-4))}));if(!b||b.disabled)return false;b.click();return true; })()`), "select recovery history");
+    await until(() => js(`Boolean(document.querySelector('[aria-label="Oporavak AI komande"]')?.textContent.includes(${JSON.stringify(value.command_id)}))&&[...document.querySelectorAll('button')].some(b=>b.textContent==='Oporavi postojeću obradu'&&!b.disabled)`), "selected command matches detail");
+  }
+  await selectRecovery(recoverySeed);
+  await selectRecovery(secondRecovery);
+  assert.equal(await js(`document.querySelector('[aria-label="Oporavak AI komande"]').textContent.includes(${JSON.stringify(recoverySeed.command_id)})`),false,"B cannot display A's replay");
+  await click("Oporavi postojeću obradu"); await click("Pošalji istu komandu");
+  await until(() => js("aiFixture.recoveryPosts.length===1&&[...document.querySelectorAll('button')].some(b=>b.textContent==='Oporavi postojeću obradu'&&!b.disabled)"), "B recovered without changing A");
+  assert.deepEqual(await js("aiFixture.recoveryPosts[0]"),secondRecovery.recovery_command);
+  assert.equal(await js("aiFixture.getSuggestions()[0].status"),"processing");
+  await selectRecovery(recoverySeed);
+  await click("Oporavi postojeću obradu"); await click("Pošalji istu komandu");
+  await until(() => js("document.body.textContent.includes('Kod greške obrade: process_interrupted')"), "strict expiry recovery");
+  assert.equal(await js("aiFixture.posts.length"),0,"Recovery never invokes generation endpoint");
+  assert.deepEqual(await js("aiFixture.recoveryPosts"),[secondRecovery.recovery_command,recoverySeed.recovery_command]);
+  await cdp("Page.removeScriptToEvaluateOnNewDocument", {identifier:injection.identifier});
+  // Lost page command A binds through detail, then completes while B is selected.
+  // Only the history summary observes A's completion; no recovery POST is needed.
+  await cdp("Page.navigate", { url: `http://127.0.0.1:${address.port}/tests/browser/ai-workspace.html` });
+  await until(() => js(`Boolean(window.aiFixture&&[...document.querySelectorAll('button')].some(b=>b.textContent==='Generiši AI predlog'&&!b.disabled))`), "fresh pending-command fixture");
+  const terminalB = await js("aiFixture.getSuggestions()[0].id");
+  await js("aiFixture.lose()"); await click("Generiši AI predlog");
+  await until(() => js(`Boolean(document.querySelector('[aria-label="Nepotvrđena komanda ove stranice"]'))`), "uncertain page command A");
+  const terminalA = await js(`(() => { const a=aiFixture.getSuggestions()[0],terminal=structuredClone(a);a.status='processing';a.revision=1;a.output=null;a.output_hash=null;a.completed_at=null;
+    a.recovery_command=Object.fromEntries(['command_id','story_id','article_id','source_id','target_locale','mode'].map(field=>[field,a[field]]));return terminal; })()`);
+  await click("Osveži istoriju AI predloga");
+  await selectRecovery(terminalA);
+  async function selectTerminal(id) {
+    await until(() => js(`(() => { const b=[...document.querySelectorAll('button')].find(b=>b.textContent.startsWith('Prikaži predlog')&&b.textContent.includes(${JSON.stringify(id.slice(-4))}));if(!b||b.disabled)return false;b.click();return true; })()`), "select terminal B");
+    await until(() => js(`Boolean(document.querySelector('article[aria-label="Sadržaj AI predloga"]'))&&![...document.querySelectorAll('button')].find(b=>b.textContent==='Osveži istoriju AI predloga').disabled`), "terminal B detail");
+  }
+  await selectTerminal(terminalB);
+  assert.equal(await js(`document.querySelector('[aria-label="Nepotvrđena komanda ove stranice"]').textContent.includes(${JSON.stringify(terminalA.id)})`),true);
+  assert.equal(await js(`[...document.querySelectorAll('button')].find(b=>b.textContent==='Generiši AI predlog').disabled`),true,"Processing A still guards generation while B is displayed");
+  assert.equal(await js(`Boolean(document.querySelector('a[href$="/edit"][href*="/ai/"]'))`),false,"Unrelated B does not resolve A");
+  await js(`Object.assign(aiFixture.getSuggestions()[0],${JSON.stringify(terminalA)},{recovery_command:null})`);
+  await click("Osveži istoriju AI predloga");
+  await until(() => js(`!document.querySelector('[aria-label="Nepotvrđena komanda ove stranice"]')&&[...document.querySelectorAll('button')].some(b=>b.textContent==='Generiši AI predlog'&&!b.disabled)`), "terminal history alone clears pending A");
+  await selectTerminal(terminalB);
+  assert.equal(await js(`Boolean(document.querySelector('a[href$="/edit"][href*="/ai/"]'))`),true,"Editing B is unblocked without opening terminal A");
+  assert.equal(await js("aiFixture.posts.length"),1,"Only the original generation was submitted");
+  assert.equal(await js("aiFixture.recoveryPosts.length"),0,"Summary reconciliation never submits recovery");
   assert.deepEqual(errors, []);
-  const report = { results, keyboardScrolling: "passed", cancellationFocus: "passed", keyboardTabNavigation: "passed", normalizedPublishingText: "passed", sameCommandRecovery: "passed", logoutDuringGeneration: "passed", liveProviderCalls: 0, errors };
+  const report = { results, keyboardScrolling: "passed", cancellationFocus: "passed", keyboardTabNavigation: "passed", normalizedPublishingText: "passed", sameCommandRecovery: "passed", persistedRecoveryAfterReload: "passed", selectedRecoverySwitching: "passed", terminalHistoryUnblocksPending: "passed", logoutDuringGeneration: "passed", liveProviderCalls: 0, errors };
   if (artifacts) await writeFile(path.join(artifacts, "results.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {

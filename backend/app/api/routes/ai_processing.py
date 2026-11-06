@@ -72,6 +72,23 @@ def read_suggestion(suggestion_id: UUID, access: Reader, request: Request):
         raise api_error(exc) from None
 
 
+@router.post("/{suggestion_id}/recover", response_model=SuggestionRead, responses={
+    202: {"model": SuggestionRead, "description": "The existing reservation is still processing; never dispatched again."},
+})
+def recover_suggestion(suggestion_id: UUID, command: CreateSuggestion, access: Editor, request: Request, response: Response):
+    """Explicit original-actor replay only. Missing records never start generation.
+
+    Send the exact recovery_command from an authenticated detail read. Recovery
+    works without a provider or available daily budget. Expiry seals interruption.
+    """
+    try:
+        result = service(access, request).recover(suggestion_id, command)
+    except EditorialCommandError as exc:
+        raise api_error(exc) from None
+    response.status_code = 202 if result.status == "processing" else 200
+    return result
+
+
 @router.post("/{suggestion_id}/reject", response_model=SuggestionRead)
 def reject_suggestion(suggestion_id: UUID, command: RejectSuggestion, access: Editor, request: Request):
     """Reject only a successful suggestion, preserving its immutable evidence and output."""

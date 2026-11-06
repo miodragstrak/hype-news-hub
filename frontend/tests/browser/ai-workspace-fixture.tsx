@@ -11,19 +11,33 @@ import { savedDraft, sourceRows, storyId, TestEditorialIdentity, uuid } from "..
 import "../../src/index.css";
 
 const identity = new TestEditorialIdentity();
-let stored = [aiSuggestion()], loseNext = false, holdNext = false;
+const seed = (window as Window & { hnwRecoverySeed?: ReturnType<typeof aiSuggestion> }).hnwRecoverySeed;
+let stored = seed ? [seed] : [aiSuggestion()], loseNext = false, holdNext = false;
+const recoveryPosts: CreateAiSuggestion[] = [];
 let release: (() => void) | null = null;
 const posts: CreateAiSuggestion[] = [];
 const acceptancePosts: AcceptAiSuggestion[] = [], receipts = new Map<string, EditorialReceipt>();
 let head = savedDraft(), loseAccept = false;
 const versions: EditorialVersion[] = [head.current_version!];
+if (!seed) {
 stored[0].input.source.content += "\n" + "Izvorni članak sa dugim redovima. ".repeat(200) + "X".repeat(2000);
 stored[0].input.source.input_text += "\n" + stored[0].input.source.content;
 stored[0].output!.body += "\n" + "Dugačak predlog za proveru prikaza. ".repeat(200) + "Y".repeat(2000);
+}
 const json = (value: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(value), { status }));
 window.fetch = async (input, init = {}) => {
   const url = new URL(String(input), location.href), path = url.pathname;
   if (path.endsWith("/capabilities")) return json({ roles: ["editor"], permissions: ["editorial:read", "editorial:edit"], storage: "postgres", commands_enabled: true, ai_generation_enabled: true });
+  if (path.endsWith("/recover") && init.method === "POST") {
+    const command: CreateAiSuggestion = JSON.parse(String(init.body)); recoveryPosts.push(command);
+    const run = stored.find(row => row.id === path.split("/").at(-2));
+    if (!run) return json({},404);
+    if ((["command_id","story_id","article_id","source_id","target_locale","mode"] as const).some(field => command[field] !== run[field])) return json({},409);
+    if (run.status === "processing" && run.recovery_required) {
+      run.status="interrupted";run.revision=2;run.error_code="process_interrupted";run.recovery_required=false;run.recovery_command=null;
+    }
+    return json(run,run.status === "processing" ? 202 : 200);
+  }
   if (path.endsWith("/accept") && init.method === "POST") {
     const command: AcceptAiSuggestion = JSON.parse(String(init.body)); acceptancePosts.push(command);
     const previous = receipts.get(command.command_id); if (previous) return json(previous);
@@ -56,6 +70,6 @@ window.fetch = async (input, init = {}) => {
   if (path === "/api/stories" || path === "/api/editorial-queue") return json({ stories: [], stories_total: 0 });
   throw new Error("Unexpected fixture request");
 };
-Object.assign(window, { aiFixture: { posts, acceptancePosts, getHead: () => head, getVersions: () => versions, getEvidence: () => stored[0].input, loseAccept: () => { loseAccept = true; }, lose: () => { loseNext = true; }, hold: () => { holdNext = true; }, release: () => release?.(), logout: () => identity.changeSession(null) } });
+Object.assign(window, { aiFixture: { posts, recoveryPosts, getSuggestions: () => stored, acceptancePosts, getHead: () => head, getVersions: () => versions, getEvidence: () => stored[0].input, loseAccept: () => { loseAccept = true; }, lose: () => { loseNext = true; }, hold: () => { holdNext = true; }, release: () => release?.(), logout: () => identity.changeSession(null) } });
 const router = createMemoryRouter([{ path: "*", element: <App editorialIdentity={identity} /> }], { initialEntries: [`/review/${storyId}/ai`] });
 createRoot(document.getElementById("root")!).render(<React.StrictMode><DemoDataProvider><RouterProvider router={router} /></DemoDataProvider></React.StrictMode>);

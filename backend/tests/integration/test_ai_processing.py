@@ -395,6 +395,80 @@ class AIProcessingIntegrationTests(AIProcessingCase):
             self.assertNotIn(suggestion["id"], self.client.get(public).text)
 
 
+    def _recovery_reservation(self, expired=False):
+        processor = AIProcessing(self.private_app.state.news_repository,
+            EditorialPrincipal("urn:hnh:test", "test-editor", frozenset({EditorialRole.EDITOR})), self.provider)
+        body = self.creation()
+        class CaptureClock:
+            @staticmethod
+            def now(tz): return datetime.now(tz) - timedelta(minutes=1 if expired else 0)
+        with patch("app.services.ai_processing.datetime", CaptureClock):
+            reserved, _ = processor.reserve(CreateSuggestion(**body))
+        return body, str(reserved.id)
+
+    def test_persisted_command_recovery_survives_restart_without_current_source_or_provider(self):
+        body, identity = self._recovery_reservation()
+        detail = self.private.get(BASE+"/"+identity, headers=self.headers()).json()
+        self.assertEqual(detail["recovery_command"],body)
+        frozen = detail["input"]
+        self.collect([source(posts=[post(title="Refreshed title",content="New source content")])])
+        restarted = create_app(self.runtime_config, editorial_identity_verifier=TestIdentityVerifier())
+        restarted.state.ai_provider = None
+        restarted.state.news_repository.config = self.runtime_config.model_copy(update={"ai_daily_generation_limit":0})
+        try:
+            with TestClient(restarted) as client:
+                for _ in range(2):
+                    response = client.post(BASE+"/"+identity+"/recover",json=detail["recovery_command"],headers=self.headers())
+                    self.assertEqual(response.status_code,202,response.text)
+                    self.assertEqual(response.json()["input"],frozen)
+                    self.assertEqual(response.json()["recovery_command"],body)
+        finally: restarted.state.news_repository.engine.dispose()
+        self.assertEqual((self.count(AIProcessingRun),self.count(AIProcessingEvent)),(1,1))
+        self.assertEqual(self.provider.calls,[])
+
+    def test_concurrent_expired_recovery_seals_one_interruption_after_restart(self):
+        body, identity = self._recovery_reservation(expired=True)
+        restarted = create_app(self.runtime_config, editorial_identity_verifier=TestIdentityVerifier())
+        try:
+            with TestClient(restarted) as client, ThreadPoolExecutor(max_workers=2) as pool:
+                def recover(target): return target.post(BASE+"/"+identity+"/recover",json=body,headers=self.headers())
+                first,second = list(pool.map(recover,[self.private,client]))
+                self.assertEqual((first.status_code,second.status_code),(200,200))
+                self.assertEqual(first.json(),second.json())
+                self.assertEqual((first.json()["status"],first.json()["error_code"]),("interrupted","process_interrupted"))
+        finally: restarted.state.news_repository.engine.dispose()
+        self.assertEqual((self.count(AIProcessingRun),self.count(AIProcessingEvent)),(1,2))
+        self.assertEqual(self.provider.calls,[])
+
+    def test_strict_recovery_missing_mismatched_and_unauthorized_never_reserves(self):
+        response = self.private.post(BASE+"/"+str(uuid4())+"/recover",json=self.creation(),headers=self.headers())
+        self.assertEqual(response.status_code,404)
+        self.assertEqual(self.count(AIProcessingRun),0)
+        body,identity = self._recovery_reservation()
+        for path,command,expected in ((str(uuid4()),body,409), (identity,body|{"command_id":str(uuid4())},404),
+                                     (identity,body|{"article_id":str(uuid4())},409)):
+            response=self.private.post(BASE+"/"+path+"/recover",json=command,headers=self.headers())
+            self.assertEqual(response.status_code,expected,response.text)
+        self.private_app.state.editorial_identity_verifier.identities["fixture-other-editor"] = EditorialPrincipal(
+            "urn:hnh:test", "other-editor", frozenset({EditorialRole.EDITOR}))
+        for headers,expected in (({},401),(self.headers("reader"),403),(self.headers("administrator"),409),
+                                 ({"Authorization":"Bearer fixture-other-editor"},409)):
+            response=self.private.post(BASE+"/"+identity+"/recover",json=body,headers=headers)
+            self.assertEqual(response.status_code,expected,response.text)
+        self.assertIsNone(self.private.get(BASE+"/"+identity,headers=self.headers("reader")).json()["recovery_command"])
+        self.assertIsNone(self.private.get(BASE+"/"+identity,headers=self.headers("administrator")).json()["recovery_command"])
+        self.assertEqual((self.count(AIProcessingRun),self.count(AIProcessingEvent)),(1,1))
+        self.assertEqual(self.provider.calls,[])
+
+    def test_lost_completed_response_recovered_without_creating_a_second_version_or_run(self):
+        body=self.creation(); first=self.create(body)
+        response=self.private.post(BASE+"/"+first["id"]+"/recover",json=body,headers=self.headers())
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertEqual(response.json(),first)
+        self.assertEqual((len(self.provider.calls),self.count(AIProcessingRun),self.count(AIProcessingEvent)),(1,1,2))
+        self.assertEqual((self.count(EditorialDraft),self.count(EditorialDraftVersion)),(0,0))
+
+
 class AISuggestionMigrationTests(PersistentCollectionCase):
     def tearDown(self):
         with self.engine.begin() as connection:

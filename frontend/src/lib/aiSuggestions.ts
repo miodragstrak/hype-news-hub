@@ -27,6 +27,11 @@ export function checkedAiSuggestion(value: AiSuggestion, storyId: string, expect
   if (expected && ("id" in expected ? value.id !== expected.id || value.input_hash !== expected.input_hash : value.command_id !== expected.command_id || value.article_id !== expected.article_id || value.source_id !== expected.source_id)) throw invalid();
   const input = value.input, source = input?.source;
   if (!input || input.request_id !== value.id || input.story_id !== storyId || input.mode !== value.mode || input.target_locale !== value.target_locale || typeof input.prompt_version !== "string" || !source || source.article_id !== value.article_id || source.source_id !== value.source_id || !isHash(source.input_text_hash) || ![source.title, source.excerpt, source.input_text, source.source_name, source.original_url, source.source_url, source.captured_at].every(v => typeof v === "string") || ![source.content, source.external_id, source.canonical_url, source.language, source.source_language ?? null, source.published_at].every(nullableText) || !Array.isArray(value.events) || value.events.length > 3) throw invalid();
+  if (value.recovery_command != null) {
+    const command = value.recovery_command;
+    const fields = ["command_id", "story_id", "article_id", "source_id", "target_locale", "mode"] as const;
+    if (value.status !== "processing" || Object.keys(command).length !== fields.length || fields.some(field => command[field] !== value[field])) throw invalid();
+  }
   const output = value.output;
   if (["succeeded", "accepted", "rejected"].includes(value.status)) {
     if (!output || ![output.headline, output.excerpt, output.body].every(v => typeof v === "string" && v.length > 0) || !Array.isArray(output.warnings) || !output.warnings.length || output.warnings.length > 10 || output.warnings.some(v => typeof v !== "string") || !Array.isArray(output.source_references) || output.source_references.length !== 1 || !value.output_hash) throw invalid();
@@ -60,4 +65,22 @@ export function matchingCollectedSource(source: StorySource | undefined, article
 export function aiErrorText(error: unknown) {
   const status = error instanceof EditorialApiError ? error.status : 0;
   return ({ 0: "Veza je prekinuta. Ishod generisanja nije potvrđen.", 401: "Prijava je istekla. Privatni sadržaj je uklonjen.", 403: "Nemate dozvolu za ovu AI operaciju. Privatni sadržaj je uklonjen.", 404: "Priča ili AI predlog nisu dostupni.", 409: "Komanda je u sukobu. Proverite postojeći predlog pre novog pokušaja.", 413: "Zahtev je prevelik.", 429: "Dnevni budžet AI obrade je dostignut. Novi zahtev nije poslat AI servisu.", 422: "Izvor ili odgovor nije podržan. Sadržaj nije skraćen.", 503: "AI servis nije dostupan ili nije podešen. Ishod generisanja nije potvrđen." } as Record<number, string>)[status] ?? "Server nije potvrdio AI zahtev. Nema automatskog ponavljanja.";
+}
+
+/** A persisted replay belongs only to the selected, validated processing detail. */
+export function matchesSelectedAiRecovery(plan: { id: string | null; command: CreateAiSuggestion }, selectedId: string | null, detail: AiSuggestion | null): boolean {
+  if (!plan.id || !detail || selectedId !== detail.id || plan.id !== detail.id || detail.status !== "processing" || !detail.recovery_command) return false;
+  const fields = ["command_id", "story_id", "article_id", "source_id", "target_locale", "mode"] as const;
+  return Boolean(plan.command) && Object.keys(plan.command).length === fields.length &&
+    Object.keys(detail.recovery_command).length === fields.length && fields.every(field =>
+    plan.command[field] === detail.recovery_command![field] && plan.command[field] === detail[field]);
+}
+
+/** Only authoritative, matching terminal history can resolve page-command uncertainty. */
+export function reconcilePendingAiCommand<T extends { id: string | null; command: CreateAiSuggestion }>(pending: T | null, rows: readonly AiSummary[]): T | null {
+  if (!pending) return pending;
+  const fields = ["command_id", "story_id", "article_id", "source_id", "target_locale", "mode"] as const;
+  const terminal: readonly AiStatus[] = ["succeeded", "failed", "interrupted", "rejected", "accepted"];
+  return rows.some(row => (pending.id === null || pending.id === row.id) &&
+    fields.every(field => pending.command[field] === row[field]) && terminal.includes(row.status)) ? null : pending;
 }

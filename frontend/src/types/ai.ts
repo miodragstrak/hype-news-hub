@@ -27,6 +27,7 @@ export type AiSummary = {
   created_at: string; expires_at: string; completed_at: string | null; rejected_at: string | null; recovery_required: boolean;
 };
 export type AiSuggestion = AiSummary & {
+  recovery_command?: CreateAiSuggestion | null;
   input: { request_id: string; story_id: string; mode: "translation"; target_locale: "sr-Latn"; prompt_version: string; source: AiSource;
     instructions?: string | null; response_schema?: string | null;
     generation_settings?: { max_input_tokens: number; max_output_tokens: number; output_schema_version: 1 | 2 } | null };

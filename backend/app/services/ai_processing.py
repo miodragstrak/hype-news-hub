@@ -13,7 +13,7 @@ from starlette.concurrency import run_in_threadpool
 from app.core.content_safety import safe_content_url
 from app.models import AIProcessingEvent, AIProcessingRun, CollectedArticle, NewsSource, Story, StoryArticle
 from app.schemas.ai_processing import (
-    FrozenSource, GenerationBudget, GenerationRequest, GenerationResult, MAX_DETAIL_BYTES, MAX_INPUT_BYTES,
+    CreateSuggestion, FrozenSource, GenerationBudget, GenerationRequest, GenerationResult, MAX_DETAIL_BYTES, MAX_INPUT_BYTES,
     MAX_INPUT_TEXT_BYTES, MAX_OUTPUT_BYTES, MOCK_WARNING, ProcessingMetadata, SuggestionEvent, SuggestionRead, SuggestionSummary,
 )
 from app.services.ai_provider import ProviderCancelled, ProviderConfigurationError, ProviderError
@@ -70,7 +70,16 @@ class AIProcessing:
     def detail(self, session, run):
         events = session.scalars(select(AIProcessingEvent).where(AIProcessingEvent.run_id == run.id)
             .order_by(AIProcessingEvent.revision).limit(3)).all()
-        result = SuggestionRead(**self.summary(run).model_dump(), input=run.input_payload, output=run.output,
+        recovery_command = None
+        from app.core.editorial_security import EditorialPermission
+        if (run.status == "processing" and EditorialPermission.EDIT in self.principal.permissions
+                and (run.actor_issuer, run.actor_subject) == (self.principal.issuer, self.principal.subject)):
+            # Immutable run columns preserve the normalized original command,
+            # including defaults. Never consult current collection/article state.
+            recovery_command = CreateSuggestion(**{name: getattr(run, name) for name in CreateSuggestion.model_fields})
+            if self.request_hash("ai.generate", None, recovery_command) != run.request_hash:
+                conflict("Stored generation command is inconsistent.")
+        result = SuggestionRead(recovery_command=recovery_command, **self.summary(run).model_dump(), input=run.input_payload, output=run.output,
             actor_issuer=run.actor_issuer, actor_subject=run.actor_subject,
             events=[SuggestionEvent(**{name: getattr(event, name) for name in SuggestionEvent.model_fields}) for event in events],
             processing_metadata=run.processing_metadata)
@@ -102,11 +111,16 @@ class AIProcessing:
             raise EditorialCommandError(429, "Daily AI generation budget has been reached.")
         return now, GenerationBudget(utc_day=start.date(), daily_limit=effective)
 
-    def reserve(self, command):
+    def reserve(self, command, *, recovery_run_id=None):
         digest = self.request_hash("ai.generate", None, command)
         with self.transaction() as session:
             self.command_lock(session, command.command_id)
             event = self.replay_command(session, command.command_id, digest)
+            if recovery_run_id is not None:
+                if event is None:
+                    raise EditorialCommandError(404, "Existing generation command was not found. No generation was started.")
+                if event.run_id != recovery_run_id or event.action != "generation.requested":
+                    conflict("Recovery must reference the original generation and command.")
             if event:
                 run = session.scalar(select(AIProcessingRun).where(AIProcessingRun.id == event.run_id).with_for_update())
                 # An uncertain request is never silently executed again, even for
@@ -159,6 +173,10 @@ class AIProcessing:
             self.event(session, run, "generation.requested", command=command, request_hash=digest)
             session.flush()
             return self.detail(session, run), request
+
+    def recover(self, run_id, command):
+        receipt, _ = self.reserve(command, recovery_run_id=run_id)
+        return receipt
 
     def validate_output(self, value, request):
         # Round-trip rejects constructed/unvalidated model instances as well as

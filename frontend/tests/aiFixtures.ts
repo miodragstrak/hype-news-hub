@@ -17,6 +17,6 @@ export function aiSuggestion(number = 1, changes: Partial<AiSummary> = {}): AiSu
     actor_issuer: "urn:test", actor_subject: "editor", events: [], processing_metadata: { counted_input_tokens: 123, usage: { prompt_tokens: 123, output_tokens: 40, thinking_tokens: 0, cached_tokens: 0, total_tokens: 163 }, model_metadata_version: "001", reported_model_version: "gemini-fixture-version", provider_response_id: "fixture-response-id", http_attempts: 3, generation_attempts: 1, generation_outcome: "completed", evidence_sufficient: true, output_schema_version: 1, estimated_cost: null, pricing_provenance: null, cost_status: "unknown" } };
 }
 export function aiSummary(value: AiSuggestion): AiSummary {
-  const { input: _input, output: _output, actor_issuer: _issuer, actor_subject: _subject, events: _events, processing_metadata: _metadata, ...summary } = value;
+  const { input: _input, output: _output, actor_issuer: _issuer, actor_subject: _subject, events: _events, processing_metadata: _metadata, recovery_command: _recovery, ...summary } = value;
   return summary;
 }
