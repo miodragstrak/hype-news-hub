@@ -302,6 +302,8 @@ describe("collection state and rendered outcomes", () => {
   });
 
   it("does not present an unmatched singleton as a zero-percent match", async () => {
+    vi.mocked(news.isDemoDataModeEnabled).mockReturnValue(true);
+    vi.spyOn(news, "getDemoEditorialQueueResponse").mockReturnValue({ stories_total: 1, stories: [{ ...editorial, article_count: 1, similarity_score: 0 }] });
     vi.mocked(news.getEditorialQueue).mockResolvedValue({ stories_total: 1, stories: [{ ...editorial, article_count: 1, similarity_score: 0 }] });
     mount("/review");
     await screen.findByText("No match yet");

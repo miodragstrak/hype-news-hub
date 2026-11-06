@@ -1,3 +1,4 @@
+import type { PrivateEditorialQueue } from "../types/editorialQueue";
 import { API_BASE_URL } from "./apiClient";
 import { sessionFetch } from "./sessionTransport";
 import type { AcceptAiSuggestion, AiSuggestion, AiSummary, CreateAiSuggestion } from "../types/ai";
@@ -59,6 +60,9 @@ export class EditorialApi {
     }
   }
 
+  queue(limit = 20, offset = 0, signal?: AbortSignal) {
+    return this.request<PrivateEditorialQueue>(`/api/editorial/queue?limit=${limit}&offset=${offset}`, signal);
+  }
   capabilities(signal?: AbortSignal) { return this.request<EditorialCapabilities>("/api/editorial/capabilities", signal); }
   sources(storyId: string, offset = 0, signal?: AbortSignal) {
     return this.request<StorySource[]>(`/api/editorial/stories/${encodeURIComponent(storyId)}/sources?limit=50&offset=${offset}`, signal);
